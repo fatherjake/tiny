@@ -1,13 +1,797 @@
 <!doctype html>
-<!-- Single-page trading UI: order book, price chart, order form, positions, blocks.
-     Talks to api.py over REST and /ws. Budget: < 1,000 lines. -->
+<!-- Single-file trading UI. No build: React, htm, and noble-ed25519 from esm.sh.
+     Signing bytes match core/types.py encode(). Budget: < 1,000 lines. -->
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <title>tiny</title>
+  <script type="importmap">
+  {
+    "imports": {
+      "react": "https://esm.sh/react@19.3.1",
+      "react-dom/client": "https://esm.sh/react-dom@19.3.1/client?external=react",
+      "htm": "https://esm.sh/htm@3.1.1",
+      "@noble/ed25519": "https://esm.sh/@noble/ed25519@3.2.0"
+    }
+  }
+  </script>
+  <style>
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    html, body, #root { height: 100%; margin: 0; overflow: hidden; }
+    body {
+      background: #fff;
+      color: #000;
+      font-family: sans-serif;
+      font-size: 12px;
+      line-height: 1.15;
+      font-variant-numeric: tabular-nums;
+    }
+    button, input {
+      font: inherit;
+      font-variant-numeric: tabular-nums;
+      color: #000;
+      background: #fff;
+      border: 1px solid #000;
+      border-radius: 0;
+      box-shadow: none;
+      padding: 0 4px;
+      line-height: 1.4;
+      appearance: none;
+      -webkit-appearance: none;
+    }
+    button:disabled { color: #000; background: #fff; opacity: 1; }
+    :focus { outline: 1px solid #000; outline-offset: 0; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #000; padding: 0 4px; text-align: right; white-space: nowrap; }
+    th { font-weight: bold; }
+    .l { text-align: left; }
+    .pick { cursor: pointer; }
+    .on, tr.on td, button.on { background: #000; color: #fff; }
+    thead td { font-weight: bold; }
+    table, thead, tbody, tr, th, td { border-color: #000; }
+    .app {
+      height: 100vh;
+      display: grid;
+      grid-template-columns: 250px minmax(0, 1fr) 460px;
+      grid-template-rows: auto minmax(0, 1fr) 180px;
+    }
+    header {
+      grid-column: 1 / -1;
+      grid-row: 1;
+      display: flex;
+      gap: 10px;
+      align-items: baseline;
+      flex-wrap: wrap;
+      border-bottom: 1px solid #000;
+      padding: 2px 4px;
+    }
+    .markets { grid-column: 1; grid-row: 2; }
+    .book { grid-column: 2; grid-row: 2; }
+    .side { grid-column: 3; grid-row: 2; }
+    .feed { grid-column: 1 / -1; grid-row: 3; }
+    .markets, .book, .side, .feed { min-width: 0; min-height: 0; overflow: auto; }
+    .markets { border-right: 1px solid #000; }
+    .side {
+      border-left: 1px solid #000;
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 92px) minmax(0, 1fr);
+      overflow: auto;
+    }
+    .book table { width: auto; }
+    .feed { grid-column: 1 / -1; border-top: 1px solid #000; }
+    .pad { padding: 2px 4px; border-bottom: 1px solid #000; }
+    .row { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+    .grow { min-height: 0; overflow: auto; border-bottom: 0; }
+    button.px { border: 0; padding: 0; background: #fff; }
+    td.bar { width: 56px; }
+    span.bar { display: block; height: 8px; background: #000; }
+    tr.on span.bar { background: #fff; }
+  </style>
 </head>
 <body>
-  <h1>tiny</h1>
-  <p>UI not built yet.</p>
+  <div id="root"></div>
+  <script type="module">
+    import { createElement, useEffect, useRef, useState } from "react";
+    import { createRoot } from "react-dom/client";
+    import htm from "htm";
+    import * as ed from "@noble/ed25519";
+
+    const html = htm.bind(createElement);
+    const SCALE = 1000000n;
+    const FEED_LIMIT = 50;
+
+    function bi(n) {
+      if (typeof n === "bigint") return n;
+      if (typeof n === "number") {
+        if (!Number.isSafeInteger(n)) throw new Error("use bigint above 2^53");
+        return BigInt(n);
+      }
+      if (typeof n === "string" && /^-?\d+$/.test(n)) return BigInt(n);
+      throw new Error("not an int");
+    }
+
+    function fmt(n) {
+      if (n == null || n === "") return "-";
+      const v = bi(n);
+      const neg = v < 0n;
+      const a = neg ? -v : v;
+      const frac = (a % SCALE).toString().padStart(6, "0");
+      return (neg ? "-" : "") + (a / SCALE).toString() + "." + frac;
+    }
+
+    function fmtSign(n) {
+      if (n == null || n === "") return "-";
+      const v = bi(n);
+      return v > 0n ? "+" + fmt(v) : fmt(v);
+    }
+
+    function parseScaled(text) {
+      const s = String(text).trim();
+      if (!/^\d+(\.\d+)?$/.test(s)) throw new Error("enter a number");
+      const [whole, frac = ""] = s.split(".");
+      if (frac.length > 6) throw new Error("at most 6 decimal places");
+      return BigInt(whole) * SCALE + BigInt((frac + "000000").slice(0, 6));
+    }
+
+    function unscale(n) {
+      const v = bi(n);
+      const neg = v < 0n;
+      const a = neg ? -v : v;
+      const frac = (a % SCALE).toString().padStart(6, "0").replace(/0+$/, "");
+      const whole = (a / SCALE).toString();
+      const body = frac ? whole + "." + frac : whole;
+      return neg ? "-" + body : body;
+    }
+
+    function tryScaled(text) {
+      try {
+        return parseScaled(text);
+      } catch {
+        return null;
+      }
+    }
+
+    function short(value) {
+      if (value == null || value === "") return "-";
+      return String(value).slice(0, 8);
+    }
+
+    function bytesToHex(bytes) {
+      let out = "";
+      for (const b of bytes) out += b.toString(16).padStart(2, "0");
+      return out;
+    }
+
+    function quote(text) {
+      let out = '"';
+      for (const ch of text) {
+        const c = ch.codePointAt(0);
+        if (ch === '"') out += '\\"';
+        else if (ch === "\\") out += "\\\\";
+        else if (ch === "\b") out += "\\b";
+        else if (ch === "\f") out += "\\f";
+        else if (ch === "\n") out += "\\n";
+        else if (ch === "\r") out += "\\r";
+        else if (ch === "\t") out += "\\t";
+        else if (c < 0x20 || c > 0x7e) out += unicode(c);
+        else out += ch;
+      }
+      return out + '"';
+    }
+
+    function unicode(c) {
+      if (c > 0xffff) {
+        const u = c - 0x10000;
+        return unit(0xd800 + (u >> 10)) + unit(0xdc00 + (u & 0x3ff));
+      }
+      return unit(c);
+    }
+
+    function unit(c) {
+      return "\\u" + c.toString(16).padStart(4, "0");
+    }
+
+    // core/types.py encode: sorted keys, separators "," and ":", ensure_ascii, ints only.
+    function canonicalize(value) {
+      if (value === null) return "null";
+      if (value === true) return "true";
+      if (value === false) return "false";
+      if (typeof value === "bigint") return value.toString();
+      if (typeof value === "number") {
+        if (!Number.isInteger(value)) throw new Error("encode refuses floats");
+        if (!Number.isSafeInteger(value)) throw new Error("use bigint above 2^53");
+        return Object.is(value, -0) ? "0" : String(value);
+      }
+      if (typeof value === "string") return quote(value);
+      if (value instanceof Uint8Array) return quote(bytesToHex(value));
+      if (Array.isArray(value)) return "[" + value.map(canonicalize).join(",") + "]";
+      if (typeof value === "object") {
+        const keys = Object.keys(value).sort();
+        const parts = keys.map((key) => quote(key) + ":" + canonicalize(value[key]));
+        return "{" + parts.join(",") + "}";
+      }
+      throw new Error("cannot encode " + typeof value);
+    }
+
+    async function errorText(res) {
+      const text = await res.text();
+      let body;
+      try {
+        body = JSON.parse(text);
+      } catch {
+        return text || String(res.status);
+      }
+      const detail = body.detail;
+      if (res.status === 422 && Array.isArray(detail)) {
+        return detail.map((item) => {
+          const loc = Array.isArray(item.loc) ? item.loc.join(".") : "";
+          return loc ? loc + ": " + item.msg : item.msg;
+        }).join("; ");
+      }
+      if (typeof detail === "string") return detail;
+      if (detail != null) return JSON.stringify(detail);
+      return text || String(res.status);
+    }
+
+    async function signAndPost(secret, body, nonce) {
+      const signer = bytesToHex(await ed.getPublicKeyAsync(secret));
+      const payload = new TextEncoder().encode(canonicalize([body, signer, nonce]));
+      const sig = bytesToHex(await ed.signAsync(payload, secret));
+      const res = await fetch("/tx", {
+        method: "POST",
+        // application/json is decoded before the bytes parameter, so the handler
+        // never sees the raw document. The body is still the JSON object.
+        headers: { "content-type": "application/octet-stream" },
+        body: canonicalize({ body, signer, nonce, sig }),
+      });
+      if (res.ok) return res.json();
+      const error = new Error(await errorText(res));
+      error.status = res.status;
+      throw error;
+    }
+
+    function useWebSocket(path, onMessage) {
+      const [status, setStatus] = useState("connecting");
+      const handler = useRef(onMessage);
+      handler.current = onMessage;
+      useEffect(() => {
+        let ws = null;
+        let timer = 0;
+        let attempt = 0;
+        let stopped = false;
+        const connect = () => {
+          if (stopped) return;
+          const proto = location.protocol === "https:" ? "wss:" : "ws:";
+          ws = new WebSocket(proto + "//" + location.host + path);
+          ws.onopen = () => {
+            attempt = 0;
+            setStatus("live");
+          };
+          ws.onmessage = (ev) => {
+            try {
+              handler.current(JSON.parse(ev.data));
+            } catch {
+              /* ignore a bad frame */
+            }
+          };
+          ws.onclose = () => {
+            if (stopped) return;
+            setStatus("reconnecting");
+            const delay = Math.min(500 * 2 ** attempt, 8000);
+            attempt += 1;
+            timer = setTimeout(connect, delay);
+          };
+        };
+        connect();
+        return () => {
+          stopped = true;
+          clearTimeout(timer);
+          if (ws) ws.close();
+        };
+      }, [path]);
+      return status;
+    }
+
+    function td(child, opts = {}) {
+      return html`<td
+        className=${opts.cls || null}
+        colSpan=${opts.span || null}
+        onClick=${opts.onClick || null}
+      >${child}</td>`;
+    }
+
+    function tr(cells, opts = {}) {
+      return html`<tr
+        key=${opts.key}
+        className=${opts.cls || null}
+        onClick=${opts.onClick || null}
+      >${cells}</tr>`;
+    }
+
+    function Header({ status, ws }) {
+      const s = status || {};
+      return html`<header>
+        <b>tiny - ui.html</b>
+        <span><b>node</b> ${s.node ?? "-"}</span>
+        <span><b>height</b> ${s.height ?? "-"}</span>
+        <span><b>view</b> ${s.view ?? "-"}</span>
+        <span><b>tip</b> ${short(s.tip)}</span>
+        <span><b>mempool</b> ${s.mempool ?? "-"}</span>
+        <b>${ws}</b>
+      </header>`;
+    }
+
+    function Markets({ markets, selected, onSelect }) {
+      const rows = markets.map((m) => tr([
+        td(m.name, { cls: "l" }),
+        td(fmt(m.mark_price)),
+        td(fmt(m.oracle_price)),
+        td(m.funding_index ?? "-"),
+      ], {
+        key: m.name,
+        cls: m.name === selected ? "on" : "pick",
+        onClick: () => onSelect(m.name),
+      }));
+      return html`<section className="markets"><table>
+        <thead>${tr([
+          td("market", { cls: "l" }), td("mark"), td("oracle"), td("funding"),
+        ])}</thead>
+        <tbody>${rows.length ? rows : tr([td("none", { cls: "l", span: 4 })])}</tbody>
+      </table></section>`;
+    }
+
+    function spreadMid(book) {
+      if (book == null || book.best_bid == null || book.best_ask == null) {
+        return { spread: null, mid: null };
+      }
+      const bid = bi(book.best_bid);
+      const ask = bi(book.best_ask);
+      return { spread: ask - bid, mid: (bid + ask) / 2n };
+    }
+
+    function Book({ market, book, onPrice }) {
+      const asks = (book?.asks || []).slice(0, 20);
+      const bids = (book?.bids || []).slice(0, 20);
+      let max = 1n;
+      for (const level of asks.concat(bids)) {
+        const sz = bi(level[1]);
+        if (sz > max) max = sz;
+      }
+      const levelRow = (level, key) => {
+        const sz = bi(level[1]);
+        let pct = Number((sz * 100n) / max);
+        if (sz > 0n && pct < 1) pct = 1;
+        const bar = html`<span className="bar" style=${{ width: pct + "%" }}></span>`;
+        return tr([
+          td(html`<button type="button" className="px" onClick=${() => onPrice(level[0])}>${fmt(level[0])}</button>`, { cls: "l" }),
+          td(bar, { cls: "bar" }),
+          td(fmt(sz)),
+        ], { key });
+      };
+      const { spread, mid } = spreadMid(book);
+      const body = [...asks].reverse().map((level, i) => levelRow(level, "a" + level[0] + ":" + i));
+      body.push(tr([
+        td("spread " + fmt(spread) + " mid " + fmt(mid), { cls: "l", span: 3 }),
+      ], { key: "mid" }));
+      for (let i = 0; i < bids.length; i++) body.push(levelRow(bids[i], "b" + bids[i][0] + ":" + i));
+      return html`<section className="book"><table>
+        <thead>${tr([td(market || "book", { cls: "l" }), td(""), td("size")])}</thead>
+        <tbody>${body}</tbody>
+      </table></section>`;
+    }
+
+    function gridNote(market, size, price, orderType) {
+      if (size != null && market && bi(market.lot_size) > 0n && size % bi(market.lot_size) !== 0n) {
+        return "off lot";
+      }
+      if (orderType === "limit" && price != null && market && bi(market.tick_size) > 0n) {
+        if (price % bi(market.tick_size) !== 0n) return "off tick";
+      }
+      return "";
+    }
+
+    function OrderForm({ form, patch, market, book, nonce, orderId, pending, note, bad, onSubmit }) {
+      const size = tryScaled(form.size);
+      const limitPx = form.type === "limit" ? tryScaled(form.price) : 0n;
+      let touch = null;
+      if (form.type === "market" && book) {
+        touch = form.side === "buy" ? book.best_ask : book.best_bid;
+      }
+      const notionalPx = form.type === "market" ? (touch == null ? null : bi(touch)) : limitPx;
+      const notional = size != null && notionalPx != null ? (notionalPx * size) / SCALE : null;
+      const problem = gridNote(market, size, limitPx, form.type);
+      const submit = (e) => {
+        e.preventDefault();
+        if (!pending && !problem) onSubmit();
+      };
+      return html`<form className="pad" onSubmit=${submit}>
+        <div className="row">
+          <button type="button" className=${form.side === "buy" ? "on" : ""} onClick=${() => patch({ side: "buy" })}>B buy</button>
+          <button type="button" className=${form.side === "sell" ? "on" : ""} onClick=${() => patch({ side: "sell" })}>S sell</button>
+          <button type="button" className=${form.type === "limit" ? "on" : ""} onClick=${() => patch({ type: "limit" })}>limit</button>
+          <button type="button" className=${form.type === "market" ? "on" : ""} onClick=${() => patch({ type: "market" })}>market</button>
+        </div>
+        <div className="row">
+          <span>size</span>
+          <input value=${form.size} onInput=${(e) => patch({ size: e.target.value })} />
+          ${form.type === "limit" ? html`<span>price</span><input value=${form.price} onInput=${(e) => patch({ price: e.target.value })} />` : null}
+        </div>
+        <div className="row">
+          <button type="button" className=${form.reduceOnly ? "on" : ""} onClick=${() => patch({ reduceOnly: !form.reduceOnly })}>reduce-only</button>
+          <span>notional ${fmt(notional)}</span>
+        </div>
+        <div>int size ${size == null ? "-" : size.toString()} price ${limitPx == null ? "-" : limitPx.toString()} ${problem}</div>
+        <div className="row">
+          <span>id ${orderId} nonce ${nonce}</span>
+          <button type="submit">${pending ? "sending" : "place"}</button>
+        </div>
+        ${note ? html`<div className=${bad ? "on" : ""}>${note}</div>` : null}
+      </form>`;
+    }
+
+    function Cancel({ orders, onCancel }) {
+      const rows = orders.map((o) => tr([
+        td(o.market, { cls: "l" }),
+        td(String(o.id)),
+        td(o.side === "buy" ? "B" : "S"),
+        td(fmt(o.price)),
+        td(fmt(o.size)),
+        td(html`<button type="button" onClick=${() => onCancel(o)}>cancel</button>`),
+      ], { key: o.market + ":" + o.id }));
+      return html`<section className="pad grow"><b>cancel</b>
+        ${rows.length ? html`<table><tbody>${rows}</tbody></table>` : html`<div>none</div>`}
+      </section>`;
+    }
+
+    function entryPrice(pos) {
+      const size = bi(pos.size);
+      if (size === 0n) return 0n;
+      const abs = size < 0n ? -size : size;
+      return (bi(pos.entry_notional) * SCALE) / abs;
+    }
+
+    function upnl(pos, mark) {
+      if (mark == null) return null;
+      const size = bi(pos.size);
+      const abs = size < 0n ? -size : size;
+      const notional = (abs * bi(mark)) / SCALE;
+      const entry = bi(pos.entry_notional);
+      return size > 0n ? notional - entry : entry - notional;
+    }
+
+    function Account({ account, markets }) {
+      const positions = Object.values(account?.positions || {}).sort((a, b) =>
+        String(a.market).localeCompare(String(b.market)),
+      );
+      const markOf = (name) => {
+        const found = markets.find((m) => m.name === name);
+        return found ? found.mark_price : null;
+      };
+      const rows = positions.map((p) => {
+        const size = bi(p.size);
+        const side = size > 0n ? "B" : size < 0n ? "S" : "";
+        return tr([
+          td(p.market, { cls: "l" }),
+          td(fmtSign(size) + " " + side),
+          td(fmt(entryPrice(p))),
+          td(fmtSign(upnl(p, markOf(p.market)))),
+        ], { key: p.market });
+      });
+      return html`<section className="pad grow">
+        <b>account</b> ${account ? "" : "none"}
+        <div>collateral ${fmt(account?.collateral ?? 0)}</div>
+        <div>account value ${fmt(account?.account_value ?? 0)}</div>
+        <div>maintenance margin ${fmt(account?.maintenance_margin ?? 0)}</div>
+        <table>
+          <thead>${tr([td("market", { cls: "l" }), td("size"), td("entry"), td("pnl")])}</thead>
+          <tbody>${rows.length ? rows : tr([td("none", { cls: "l", span: 4 })])}</tbody>
+        </table>
+      </section>`;
+    }
+
+    function Feed({ blocks }) {
+      const rows = [];
+      for (const block of blocks) {
+        const txs = block.txs || [];
+        rows.push(tr([
+          td(block.height),
+          td(short(block.hash), { cls: "l" }),
+          td(txs.length + " tx", { cls: "l", span: 2 }),
+        ], { key: "b" + block.height }));
+        txs.forEach((tx, i) => {
+          rows.push(tr([
+            td(""),
+            td(tx.kind, { cls: "l" }),
+            td(short(tx.signer), { cls: "l" }),
+            td(tx.nonce),
+          ], { key: block.height + "-" + i }));
+        });
+      }
+      return html`<section className="feed"><table>
+        <thead>${tr([td("height"), td("hash / kind", { cls: "l" }), td("signer", { cls: "l" }), td("nonce")])}</thead>
+        <tbody>${rows.length ? rows : tr([td("none", { cls: "l", span: 4 })])}</tbody>
+      </table></section>`;
+    }
+
+    function KeyBox({ hex, trader, error, onHex, onGenerate }) {
+      return html`<div className="pad">
+        <div className="row">
+          <b>private key</b>
+          <button type="button" onClick=${onGenerate}>generate</button>
+        </div>
+        <input className="key" spellCheck=${false} autoComplete="off" value=${hex} onInput=${(e) => onHex(e.target.value)} />
+        <div>trader ${trader || "-"}</div>
+        ${error ? html`<div className="on">${error}</div>` : null}
+      </div>`;
+    }
+
+    function App() {
+      const [status, setStatus] = useState(null);
+      const [markets, setMarkets] = useState([]);
+      const [books, setBooks] = useState({});
+      const [selected, setSelected] = useState("");
+      const [feed, setFeed] = useState([]);
+      const [hex, setHex] = useState("");
+      const [key, setKey] = useState(null);
+      const [keyError, setKeyError] = useState("");
+      const [account, setAccount] = useState(null);
+      const [sent, setSent] = useState([]);
+      const [form, setForm] = useState({
+        side: "buy", type: "limit", size: "1", price: "100", reduceOnly: false,
+      });
+      const [note, setNote] = useState("");
+      const [bad, setBad] = useState(false);
+      const [pending, setPending] = useState(false);
+      const localNonce = useRef(0);
+      const nextId = useRef(1);
+      const busy = useRef(false);
+      const keyToken = useRef(0);
+      const [, bumpNonce] = useState(0);
+
+      const onWs = (msg) => {
+        if (msg.type === "block") {
+          setFeed((xs) => [msg, ...xs].slice(0, FEED_LIMIT));
+          setStatus((s) => ({ ...(s || {}), height: msg.height, view: msg.view, tip: msg.hash }));
+          fetch("/markets").then(async (res) => {
+            if (res.ok) setMarkets(await res.json());
+          }).catch(() => {});
+        } else if (msg.type === "book") {
+          setBooks((prev) => ({ ...prev, [msg.market]: msg }));
+        }
+      };
+      const ws = useWebSocket("/ws", onWs);
+
+      useEffect(() => {
+        let stop = false;
+        const tick = async () => {
+          try {
+            const res = await fetch("/status");
+            if (!stop && res.ok) setStatus(await res.json());
+          } catch {
+            /* keep the last status */
+          }
+        };
+        tick();
+        const id = setInterval(tick, 1000);
+        return () => {
+          stop = true;
+          clearInterval(id);
+        };
+      }, []);
+
+      useEffect(() => {
+        let stop = false;
+        fetch("/markets").then(async (res) => {
+          if (!stop && res.ok) setMarkets(await res.json());
+        }).catch(() => {});
+        return () => {
+          stop = true;
+        };
+      }, []);
+
+      useEffect(() => {
+        if (!selected && markets.length) setSelected(markets[0].name);
+      }, [markets, selected]);
+
+      useEffect(() => {
+        if (!selected) return;
+        let stop = false;
+        fetch("/book/" + encodeURIComponent(selected) + "?levels=20").then(async (res) => {
+          if (!stop && res.ok) {
+            const book = await res.json();
+            setBooks((prev) => ({ ...prev, [selected]: book }));
+          }
+        }).catch(() => {});
+        return () => {
+          stop = true;
+        };
+      }, [selected]);
+
+      useEffect(() => {
+        if (!key) {
+          setAccount(null);
+          return;
+        }
+        let stop = false;
+        const tick = async () => {
+          try {
+            const res = await fetch("/account/" + key.trader);
+            if (stop) return;
+            if (res.status === 404) {
+              setAccount(null);
+              return;
+            }
+            if (res.ok) setAccount(await res.json());
+          } catch {
+            /* keep the last account */
+          }
+        };
+        tick();
+        const id = setInterval(tick, 1000);
+        return () => {
+          stop = true;
+          clearInterval(id);
+        };
+      }, [key]);
+
+      useEffect(() => {
+        localNonce.current = 0;
+        setSent([]);
+        setAccount(null);
+        setNote("");
+        setBad(false);
+        bumpNonce((n) => n + 1);
+      }, [key]);
+
+      const patch = (part) => setForm((prev) => ({ ...prev, ...part }));
+      const nonce = Math.max(localNonce.current, account?.nonce ?? 0) + 1;
+      const market = markets.find((m) => m.name === selected) || null;
+      const book = books[selected] || null;
+      const orders = Array.isArray(account?.orders) ? account.orders : sent;
+
+      async function resyncNonce() {
+        if (!key) return;
+        const res = await fetch("/account/" + key.trader);
+        if (res.status === 404) {
+          setAccount(null);
+          return;
+        }
+        if (res.ok) {
+          const body = await res.json();
+          localNonce.current = Math.max(localNonce.current, body.nonce ?? 0);
+          setAccount(body);
+          bumpNonce((n) => n + 1);
+        }
+      }
+
+      async function onHex(value) {
+        setHex(value);
+        const token = ++keyToken.current;
+        const clean = value.trim().toLowerCase();
+        if (!/^[0-9a-f]{64}$/.test(clean)) {
+          setKey(null);
+          setKeyError(clean ? "key must be 64 hex chars" : "");
+          return;
+        }
+        try {
+          const secret = ed.etc.hexToBytes(clean);
+          const trader = bytesToHex(await ed.getPublicKeyAsync(secret));
+          if (token !== keyToken.current) return;
+          setKey({ secret, trader });
+          setKeyError("");
+        } catch (err) {
+          if (token !== keyToken.current) return;
+          setKey(null);
+          setKeyError(err.message || String(err));
+        }
+      }
+
+      async function onGenerate() {
+        const token = ++keyToken.current;
+        const { secretKey, publicKey } = await ed.keygenAsync();
+        if (token !== keyToken.current) return;
+        setHex(bytesToHex(secretKey));
+        setKey({ secret: secretKey, trader: bytesToHex(publicKey) });
+        setKeyError("");
+      }
+
+      async function place() {
+        if (!key || !selected || busy.current) return;
+        const size = tryScaled(form.size);
+        const price = form.type === "market" ? 0n : tryScaled(form.price);
+        if (size == null || price == null) {
+          setBad(true);
+          setNote("size and price must be numbers");
+          return;
+        }
+        if (gridNote(market, size, price, form.type)) return;
+        if (size <= 0n || (form.type === "limit" && price <= 0n)) {
+          setBad(true);
+          setNote(form.type === "limit" ? "size and price must be positive" : "size must be positive");
+          return;
+        }
+        busy.current = true;
+        setPending(true);
+        const sentNonce = Math.max(localNonce.current, account?.nonce ?? 0) + 1;
+        const id = nextId.current;
+        const body = {
+          kind: "place_order",
+          order: {
+            id,
+            trader: key.trader,
+            market: selected,
+            side: form.side,
+            type: form.type,
+            price,
+            size,
+            reduce_only: form.reduceOnly,
+          },
+        };
+        try {
+          await signAndPost(key.secret, body, sentNonce);
+          localNonce.current = sentNonce;
+          nextId.current = id + 1;
+          bumpNonce((n) => n + 1);
+          if (form.type === "limit") {
+            setSent((xs) => [...xs, { id, market: selected, side: form.side, price, size }]);
+          }
+          setBad(false);
+          setNote("accepted nonce " + sentNonce);
+        } catch (err) {
+          if (err.status === 400) await resyncNonce();
+          setBad(true);
+          setNote(err.message || String(err));
+        } finally {
+          busy.current = false;
+          setPending(false);
+        }
+      }
+
+      async function onCancel(order) {
+        if (!key || busy.current) return;
+        busy.current = true;
+        setPending(true);
+        const sentNonce = Math.max(localNonce.current, account?.nonce ?? 0) + 1;
+        const body = {
+          kind: "cancel_order",
+          trader: key.trader,
+          market: order.market,
+          order_id: order.id,
+        };
+        try {
+          await signAndPost(key.secret, body, sentNonce);
+          localNonce.current = sentNonce;
+          bumpNonce((n) => n + 1);
+          setSent((xs) => xs.filter((item) => !(item.market === order.market && item.id === order.id)));
+          setBad(false);
+          setNote("accepted nonce " + sentNonce);
+        } catch (err) {
+          if (err.status === 400) await resyncNonce();
+          setBad(true);
+          setNote(err.message || String(err));
+        } finally {
+          busy.current = false;
+          setPending(false);
+        }
+      }
+
+      const shell = [
+        html`<${Header} status=${status} ws=${ws} />`,
+        html`<${Markets} markets=${markets} selected=${selected} onSelect=${setSelected} />`,
+        html`<${Book} market=${selected} book=${book} onPrice=${(px) => patch({ price: unscale(px), type: "limit" })} />`,
+        html`<section className="side">${[
+          html`<${KeyBox} hex=${hex} trader=${key?.trader || ""} error=${keyError} onHex=${onHex} onGenerate=${onGenerate} />`,
+          html`<${OrderForm} form=${form} patch=${patch} market=${market} book=${book} nonce=${nonce} orderId=${nextId.current} pending=${pending} note=${note} bad=${bad} onSubmit=${place} />`,
+          html`<${Cancel} orders=${orders} onCancel=${onCancel} />`,
+          html`<${Account} account=${account} markets=${markets} />`,
+        ]}</section>`,
+        html`<${Feed} blocks=${feed} />`,
+      ];
+      return html`<div className="app">${shell}</div>`;
+    }
+
+    createRoot(document.getElementById("root")).render(html`<${App} />`);
+  </script>
 </body>
 </html>
