@@ -1,7 +1,7 @@
 from dataclasses import replace
 
 from core.net import Handler
-from core.node import Mempool, Node, sign_tx, verify_tx
+from core.node import Mempool, Node, public_key, sign_tx, verify_tx
 from core.types import QC, Account, Block, CancelOrder, Market, NodeId, Tx
 
 KEY_A = bytes(range(32))
@@ -34,6 +34,11 @@ class FakeTransport:
 def make_node() -> tuple[Node, FakeTransport]:
     transport = FakeTransport()
     return Node(0, 4, KEY_B, {}, [MARKET], transport), transport
+
+
+def test_node_state_includes_its_own_validator_key() -> None:
+    node, _transport = make_node()
+    assert node.state.validators == {public_key(KEY_B).hex()}
 
 
 def test_signatures() -> None:

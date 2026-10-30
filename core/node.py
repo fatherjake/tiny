@@ -166,7 +166,9 @@ class Node:
         self.transport = transport
         self.price_feed = price_feed
         self.mempool = Mempool()
-        self.state = State(markets)
+        validators = {pub.hex() for pub in validator_pubkeys.values()}
+        validators.add(public_key(private_key).hex())
+        self.state = State(markets, validators)
         self.committed: list[Block] = []
         self.replica = Replica(
             node_id,
