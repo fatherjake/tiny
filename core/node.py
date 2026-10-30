@@ -75,6 +75,10 @@ def verify_tx(tx: Tx) -> bool:
 class Mempool:
     """Pending txs keyed by (signer, nonce).
 
+    Node.accept lets a signer queue up to `nonce_window` nonces ahead of their committed nonce, so a
+    bot can send a burst without waiting for each commit. A tx stuck behind a nonce that never
+    arrives is evicted once it has waited `max_age` commits.
+
     Deduping here only saves work. What stops a tx applying twice is State's nonce rule, so a
     duplicate that slips into two blocks is rejected when the second one is applied.
 
@@ -84,13 +88,21 @@ class Mempool:
     """
 
     def __init__(
-        self, max_block_txs: int = 500, max_pending: int = 10_000, retry_after: int = 5
+        self,
+        max_block_txs: int = 500,
+        max_pending: int = 10_000,
+        nonce_window: int = 16,
+        max_age: int = 50,
+        retry_after: int = 5,
     ) -> None:
         self.max_block_txs = max_block_txs
         self.max_pending = max_pending
+        self.nonce_window = nonce_window
+        self.max_age = max_age
         self.retry_after = retry_after
         self.pending: dict[TxKey, Tx] = {}
-        self.proposed: dict[TxKey, int] = {}  # key -> self.commits when it was proposed
+        self.arrived: dict[TxKey, int] = {}  # key -> self.commits when it was added
+        self.proposed: dict[TxKey, int] = {}  # key -> self.commits when it was first proposed
         self.commits = 0
 
     def add(self, tx: Tx) -> bool:
@@ -98,6 +110,7 @@ class Mempool:
         if key in self.pending or len(self.pending) >= self.max_pending:
             return False
         self.pending[key] = tx
+        self.arrived[key] = self.commits
         return True
 
     def take(self) -> list[Tx]:
@@ -112,18 +125,25 @@ class Mempool:
             self.proposed.setdefault((tx.signer, tx.nonce), self.commits)
 
     def remove_committed(self, block: Block, nonce_of: Callable[[str], int]) -> None:
-        """Drop the block's txs, any tx whose nonce is now used, and stale proposed marks."""
+        """Drop the block's txs, txs whose nonce is now used or that waited too long, and release
+        proposed marks on txs whose proposal looks abandoned."""
         self.commits += 1
         for tx in block.txs:
-            self.pending.pop((tx.signer, tx.nonce), None)
-            self.proposed.pop((tx.signer, tx.nonce), None)
-        stale = [key for key in self.pending if key[1] <= nonce_of(key[0])]
-        for key in stale:
-            del self.pending[key]
-            self.proposed.pop(key, None)
-        expired = [key for key, at in self.proposed.items() if self.commits - at > self.retry_after]
-        for key in expired:
+            self.drop((tx.signer, tx.nonce))
+        for key in list(self.pending):
+            used = key[1] <= nonce_of(key[0])
+            if used or self.commits - self.arrived[key] > self.max_age:
+                self.drop(key)
+        abandoned = [
+            key for key, at in self.proposed.items() if self.commits - at > self.retry_after
+        ]
+        for key in abandoned:
             del self.proposed[key]
+
+    def drop(self, key: TxKey) -> None:
+        self.pending.pop(key, None)
+        self.arrived.pop(key, None)
+        self.proposed.pop(key, None)
 
 
 # ---------------------------------------------------------------- node
@@ -168,7 +188,7 @@ class Node:
     def submit(self, tx: Tx) -> bool:
         """Entry point for the API: check it, add it to the mempool, gossip it to the other nodes.
 
-        Returns False for a bad signature, a nonce that is not the next one, a duplicate or a full
+        Returns False for a bad signature, a used or too-far-ahead nonce, a duplicate or a full
         mempool. True only means "pending": the tx takes effect, or is rejected, when its block is
         applied.
         """
@@ -180,10 +200,10 @@ class Node:
     def accept(self, tx: Tx) -> bool:
         """Cheap checks only, cheapest first. State has the final say on every tx.
 
-        Only the signer's next nonce is accepted, so a signer has one tx pending at a time and the
-        pool never holds a tx stuck behind a nonce gap.
+        The nonce must be unused and at most `nonce_window` ahead of the signer's committed nonce.
         """
-        if tx.nonce != self.state.nonce(tx.signer) + 1:
+        committed = self.state.nonce(tx.signer)
+        if not committed < tx.nonce <= committed + self.mempool.nonce_window:
             return False
         if not verify_tx(tx):
             return False

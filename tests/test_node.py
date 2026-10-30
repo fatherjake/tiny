@@ -58,15 +58,16 @@ def test_submit_accepts_and_gossips_once() -> None:
     assert transport.broadcasts == [tx]
 
 
-def test_submit_rejects_bad_sig_and_any_nonce_but_the_next() -> None:
+def test_submit_rejects_bad_sig_and_nonces_outside_the_window() -> None:
     node, transport = make_node()
     assert not node.submit(replace(cancel(1), sig=bytes(64)))
     assert not node.submit(cancel(0))
     node.state.accounts[cancel(1).signer] = Account("alice", nonce=3)
     assert not node.submit(cancel(3))  # used
-    assert not node.submit(cancel(5))  # gap
+    assert not node.submit(cancel(20))  # more than 16 ahead
     assert node.submit(cancel(4))
-    assert len(transport.broadcasts) == 1
+    assert node.submit(cancel(19))  # queued behind a gap is fine
+    assert len(transport.broadcasts) == 2
 
 
 def test_gossiped_tx_is_not_rebroadcast() -> None:
@@ -95,3 +96,14 @@ def test_remove_committed_drops_used_nonces_and_retries_abandoned() -> None:
     assert pool.take() == []  # still proposed
     pool.remove_committed(block_of(), lambda signer: 2)
     assert [tx.nonce for tx in pool.take()] == [5]
+
+
+def test_tx_stuck_behind_a_gap_ages_out() -> None:
+    pool = Mempool(max_age=2)
+    pool.add(cancel(5))
+    pool.remove_committed(block_of(), lambda signer: 0)
+    pool.remove_committed(block_of(), lambda signer: 0)
+    assert len(pool.pending) == 1
+    pool.remove_committed(block_of(), lambda signer: 0)
+    assert pool.pending == {}
+    assert pool.arrived == {}
