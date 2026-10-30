@@ -1,8 +1,8 @@
 """Playground: run a whole cluster in one process and watch it.
 
-Starts n Nodes on a MemoryNetwork, a fake price feed, a few trading bots, a fake source chain with
-the bridge oracle and relayer, and the API + UI on node 0. Kill or partition nodes from the CLI to
-watch HotStuff stay live with f faults. Automated fault scenarios live in tests/.
+Starts n Nodes on a MemoryNetwork, a fake price feed and a few trading bots, then serves the
+API and UI on node 0. The bridge is not running, so each bot is credited the same mock balance
+on every node before the first block. Kill a node with --kill to watch HotStuff with f faults.
 
     uv run python -m sim --validators 4 --kill 3
 
@@ -12,11 +12,69 @@ sim/ is not under the 1,000-line limit, but keep it small.
 from __future__ import annotations
 
 import argparse
+import logging
+import threading
+import time
 
-from sim.bots import Bot  # noqa: F401
-from sim.bridge import FakeSourceChain, Oracle, Relayer  # noqa: F401
-from sim.feed import FakePriceFeed  # noqa: F401
-from sim.net import MemoryNetwork  # noqa: F401
+import uvicorn
+
+from core.api import create_app
+from core.node import Node, public_key
+from core.types import PRICE_SCALE, USDC_SCALE, Account, Market, Tx
+from sim.bots import Bot
+from sim.feed import FakePriceFeed
+from sim.net import MemoryNetwork
+
+log = logging.getLogger(__name__)
+
+MARKET = Market("BTC-PERP", tick_size=1, lot_size=1, max_leverage=10, maintenance_margin_bps=300)
+START_PRICE = 50_000 * PRICE_SCALE
+MOCK_COLLATERAL = 1_000_000 * USDC_SCALE
+PACE_MS = 50
+
+
+def demo_key(index: int) -> bytes:
+    """Deterministic demo trader. Validators use 1..n, so these start at 1000."""
+    return (1_000 + index).to_bytes(32, "big")
+
+
+def build(
+    n: int,
+    delay_ms: tuple[int, int],
+    drop: float,
+    seed: int,
+    traders: int,
+) -> tuple[MemoryNetwork, list[Node], list[bytes]]:
+    net = MemoryNetwork(n, delay_ms=delay_ms, drop=drop, seed=seed)
+    keys = [(i + 1).to_bytes(32, "big") for i in range(n)]
+    pubs = {i: public_key(key) for i, key in enumerate(keys)}
+    feed = FakePriceFeed({MARKET.name: START_PRICE}, seed=seed)
+    nodes = [Node(i, n, keys[i], pubs, [MARKET], net.endpoint(i), feed.tick) for i in range(n)]
+    funded = [demo_key(i) for i in range(traders)]
+    for node in nodes:
+        for key in funded:
+            trader = public_key(key).hex()
+            node.state.accounts[trader] = Account(trader, collateral=MOCK_COLLATERAL)
+    for node in nodes:
+        node.start()
+    return net, nodes, funded
+
+
+def drive(
+    net: MemoryNetwork,
+    nodes: list[Node],
+    bots: list[Bot],
+    stop: threading.Event,
+    lock: threading.RLock,
+) -> None:
+    """Advance virtual time in small steps so the API can read commits as they happen."""
+    while not stop.is_set():
+        with lock:
+            net.run_for(PACE_MS)
+            now = net.now
+            for bot in bots:
+                bot.step(nodes[0], now)
+        time.sleep(PACE_MS / 1000)
 
 
 def main() -> None:
@@ -25,10 +83,37 @@ def main() -> None:
     parser.add_argument("--kill", type=int, action="append", default=[])
     parser.add_argument("--delay-ms", type=int, nargs=2, default=[5, 50])
     parser.add_argument("--drop", type=float, default=0.0)
-    parser.add_argument("--bots", type=int, default=3)
+    parser.add_argument("--bots", type=int, default=100)
     parser.add_argument("--api-port", type=int, default=8000)
     args = parser.parse_args()
-    raise NotImplementedError(args)
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    net, nodes, funded = build(
+        args.validators, (args.delay_ms[0], args.delay_ms[1]), args.drop, seed=0, traders=args.bots
+    )
+    for node_id in args.kill:
+        net.kill(node_id)
+    # The API thread submits while the pump thread applies blocks. One lock, re-entered
+    # when a commit on node 0 signs the next oracle price.
+    lock = threading.RLock()
+    raw_submit = nodes[0].submit
+
+    def submit(tx: Tx) -> bool:
+        with lock:
+            return raw_submit(tx)
+
+    nodes[0].submit = submit  # type: ignore[method-assign]
+    bots = [Bot(key, MARKET.name, slot=i) for i, key in enumerate(funded)]
+    for key in funded:
+        log.info("funded %s", public_key(key).hex())
+        log.info("  private key %s", key.hex())
+    stop = threading.Event()
+    threading.Thread(target=drive, args=(net, nodes, bots, stop, lock), daemon=True).start()
+    try:
+        uvicorn.run(create_app(nodes[0]), host="127.0.0.1", port=args.api_port, log_level="info")
+    finally:
+        stop.set()
+        for node in nodes:
+            node.stop()
 
 
 if __name__ == "__main__":
