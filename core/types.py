@@ -10,14 +10,15 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Literal
 
 NodeId = int
 View = int
 Hash = bytes  # 32-byte SHA-256
 
 PRICE_SCALE = 10**6  # prices are integers in 1e-6 units
-SIZE_SCALE = 10**6   # sizes are integers in 1e-6 units
-USDC_SCALE = 10**6   # balances are integers in 1e-6 USDC
+SIZE_SCALE = 10**6  # sizes are integers in 1e-6 units
+USDC_SCALE = 10**6  # balances are integers in 1e-6 USDC
 
 
 def sha256(data: bytes) -> Hash:
@@ -112,7 +113,7 @@ class Order:
     side: Side
     type: OrderType
     price: int  # PRICE_SCALE; ignored for market orders
-    size: int   # SIZE_SCALE
+    size: int  # SIZE_SCALE
     reduce_only: bool = False
 
 
@@ -131,7 +132,7 @@ class Fill:
 @dataclass
 class Position:
     market: str
-    size: int = 0          # signed: >0 long, <0 short
+    size: int = 0  # signed: >0 long, <0 short
     entry_notional: int = 0
     funding_index: int = 0  # cumulative funding index at last settlement
 
@@ -146,7 +147,7 @@ class Account:
 
 @dataclass(frozen=True)
 class Market:
-    name: str           # e.g. "BTC-PERP"
+    name: str  # e.g. "BTC-PERP"
     tick_size: int
     lot_size: int
     max_leverage: int
@@ -194,11 +195,13 @@ class MessageProof:
 
 
 # ---------------------------------------------------------------- transactions
+# Each body carries a `kind` tag so a TxBody can be decoded from JSON without guessing.
 
 
 @dataclass(frozen=True)
 class PlaceOrder:
     order: Order
+    kind: Literal["place_order"] = "place_order"
 
 
 @dataclass(frozen=True)
@@ -206,22 +209,26 @@ class CancelOrder:
     trader: str
     market: str
     order_id: int
+    kind: Literal["cancel_order"] = "cancel_order"
 
 
 @dataclass(frozen=True)
 class SetOraclePrice:
     price: OraclePrice
+    kind: Literal["set_oracle_price"] = "set_oracle_price"
 
 
 @dataclass(frozen=True)
 class PostHeader:
     header: BlockHeader
     oracle_sig: bytes
+    kind: Literal["post_header"] = "post_header"
 
 
 @dataclass(frozen=True)
 class Deposit:
     proof: MessageProof
+    kind: Literal["deposit"] = "deposit"
 
 
 @dataclass(frozen=True)
@@ -230,6 +237,7 @@ class Withdraw:
     amount: int
     dest_chain: int
     dest_address: str
+    kind: Literal["withdraw"] = "withdraw"
 
 
 TxBody = PlaceOrder | CancelOrder | SetOraclePrice | PostHeader | Deposit | Withdraw
