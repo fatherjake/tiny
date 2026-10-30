@@ -11,7 +11,8 @@
       "react": "https://esm.sh/react@19.3.1",
       "react-dom/client": "https://esm.sh/react-dom@19.3.1/client?external=react",
       "htm": "https://esm.sh/htm@3.1.1",
-      "@noble/ed25519": "https://esm.sh/@noble/ed25519@3.2.0"
+      "@noble/ed25519": "https://esm.sh/@noble/ed25519@3.2.0",
+      "lightweight-charts": "https://esm.sh/lightweight-charts@5.2.1"
     }
   }
   </script>
@@ -27,7 +28,7 @@
       line-height: 1.35;
       font-variant-numeric: tabular-nums;
     }
-    button, input {
+    button, input, select {
       font: inherit;
       font-variant-numeric: tabular-nums;
       color: #000;
@@ -46,64 +47,92 @@
     th, td { border: 1px solid var(--line); padding: 2px 6px; text-align: right; white-space: nowrap; }
     th { font-weight: bold; }
     .l { text-align: left; }
-    .pick { cursor: pointer; }
+    select {
+      font-weight: bold;
+      font-size: 16px;
+      padding-right: 18px;
+      background-image: linear-gradient(45deg, transparent 50%, #000 50%), linear-gradient(135deg, #000 50%, transparent 50%);
+      background-position: calc(100% - 12px) 55%, calc(100% - 7px) 55%;
+      background-size: 5px 5px, 5px 5px;
+      background-repeat: no-repeat;
+    }
     .on, tr.on td, button.on { background: #000; color: #fff; border-color: #000; }
     thead td { font-weight: bold; }
     table, thead, tbody, tr, th, td { border-color: var(--line); }
     .app {
       height: 100vh;
       display: grid;
-      grid-template-columns: 250px minmax(0, 1fr) 460px;
-      grid-template-rows: auto minmax(0, 1fr) 180px;
+      grid-template-columns: minmax(0, 1fr) 420px 320px;
+      grid-template-rows: auto minmax(0, 1fr) 200px;
     }
     header {
       grid-column: 1 / -1;
       grid-row: 1;
       display: flex;
+      justify-content: space-between;
       gap: 16px;
       align-items: baseline;
       flex-wrap: wrap;
       border-bottom: 1px solid var(--line);
-      padding: 6px 10px;
+      padding: 8px 12px;
     }
-    .markets { grid-column: 1; grid-row: 2; }
-    .center {
-      grid-column: 2;
+    .quote { display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap; }
+    .chart {
+      grid-column: 1;
       grid-row: 2;
-      display: grid;
-      grid-template-rows: 200px minmax(0, 1fr);
       min-width: 0;
       min-height: 0;
-    }
-    .chart {
-      min-height: 0;
-      border-bottom: 1px solid var(--line);
       padding: 6px 10px 4px;
       display: grid;
       grid-template-rows: auto minmax(0, 1fr);
     }
-    .chart svg { width: 100%; height: 100%; display: block; }
-    .chart text { font-family: sans-serif; font-size: 10px; fill: #000; }
-    .side { grid-column: 3; grid-row: 2; }
-    .feed { grid-column: 1 / -1; grid-row: 3; }
-    .markets, .book, .side, .feed { min-width: 0; min-height: 0; overflow: auto; }
-    .markets { border-right: 1px solid var(--line); }
-    .side {
-      border-left: 1px solid var(--line);
+    .plot { position: relative; min-width: 0; min-height: 0; }
+    a { color: #000; }
+    .depth {
+      grid-column: 2;
+      grid-row: 2;
       display: grid;
-      grid-template-rows: auto auto minmax(0, 92px) minmax(0, 1fr);
+      grid-template-rows: auto minmax(0, 1fr);
+      min-width: 0;
+      min-height: 0;
+      border-left: 1px solid var(--line);
+      overflow: hidden;
+    }
+    .side {
+      grid-column: 3;
+      grid-row: 2;
+      border-left: 1px solid var(--line);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
       overflow: auto;
     }
-    .book table { width: auto; }
-    .feed { grid-column: 1 / -1; border-top: 1px solid var(--line); }
+    .tape, .side, .pane { min-width: 0; min-height: 0; overflow: auto; }
+    .book { min-width: 0; min-height: 0; overflow: hidden; }
+    .tape { overflow-anchor: none; }
+    .dock {
+      grid-column: 1 / -1;
+      grid-row: 3;
+      border-top: 1px solid var(--line);
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      min-height: 0;
+    }
+    .tabs { display: flex; border-bottom: 1px solid var(--line); }
+    .tabs button { border-width: 0 1px 0 0; }
     .pad { padding: 6px 10px; border-bottom: 1px solid var(--line); }
     .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
     .row + .row, .pad > div + div { margin-top: 4px; }
     .grow { min-height: 0; overflow: auto; border-bottom: 0; }
-    button.px { border: 0; padding: 0; background: #fff; }
-    td.bar { width: 56px; }
-    span.bar { display: block; height: 8px; background: #000; }
-    tr.on span.bar, tr.on button.px { background: #fff; color: #fff; }
+    button.px { border: 0; padding: 0; background: transparent; }
+    .book table, .book thead, .book tbody { display: block; width: 100%; }
+    .book tr { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 1fr); position: relative; z-index: 0; }
+    .book td { border: 0; border-bottom: 1px solid var(--line); background: transparent; padding: 1px 8px; }
+    .book tr.ask::after, .book tr.bid::after { content: ""; position: absolute; z-index: -1; top: 0; bottom: 0; left: calc(100% * 1.15 / 3.15); width: calc(var(--w) * 2 / 3.15); background: rgb(198 40 40 / 32%); }
+    .book tr.bid::after { background: rgb(27 138 62 / 32%); }
+    .book button.px.ask, .tape td.ask { color: #c62828; }
+    .book button.px.bid, .tape td.bid { color: #18803a; }
+    .book tr.mid td { font-weight: bold; }
   </style>
 </head>
 <body>
@@ -113,6 +142,8 @@
     import { createRoot } from "react-dom/client";
     import htm from "htm";
     import * as ed from "@noble/ed25519";
+    // TradingView Lightweight Charts. Copyright (c) 2025 TradingView, Inc. https://www.tradingview.com/
+    import { CandlestickSeries, ColorType, LineSeries, createChart } from "lightweight-charts";
 
     const html = htm.bind(createElement);
     const SCALE = 1000000n;
@@ -322,142 +353,207 @@
       return html`<tr
         key=${opts.key}
         className=${opts.cls || null}
+        style=${opts.style || null}
         onClick=${opts.onClick || null}
       >${cells}</tr>`;
     }
 
-    function Header({ status, ws }) {
+    function Header({ status, ws, market, markets, selected, onSelect, last }) {
       const s = status || {};
+      const m = market || {};
+      const options = markets.length
+        ? markets.map((item) => html`<option key=${item.name} value=${item.name}>${item.name}</option>`)
+        : html`<option value="">tiny</option>`;
       return html`<header>
-        <b>tiny - ui.html</b>
-        <span><b>node</b> ${s.node ?? "-"}</span>
-        <span><b>height</b> ${s.height ?? "-"}</span>
-        <span><b>view</b> ${s.view ?? "-"}</span>
-        <span><b>tip</b> ${short(s.tip)}</span>
-        <span><b>mempool</b> ${s.mempool ?? "-"}</span>
-        <b>${ws}</b>
+        <div className="quote">
+          <select value=${selected} onChange=${(e) => onSelect(e.target.value)}>${options}</select>
+          <span><b>${last ? last.side : "last"}</b> ${fmt(last && last.price)}</span>
+          <span><b>mark</b> ${fmt(m.mark_price)}</span>
+          <span><b>oracle</b> ${fmt(m.oracle_price)}</span>
+          <span><b>funding</b> ${m.funding_index ?? "-"}</span>
+        </div>
+        <div className="quote">
+          <span>node ${s.node ?? "-"}</span>
+          <span>height ${s.height ?? "-"}</span>
+          <span>view ${s.view ?? "-"}</span>
+          <span>${short(s.tip)}</span>
+          <b>${ws}</b>
+        </div>
       </header>`;
-    }
-
-    function Markets({ markets, selected, onSelect }) {
-      const rows = markets.map((m) => tr([
-        td(m.name, { cls: "l" }),
-        td(fmt(m.mark_price)),
-        td(fmt(m.oracle_price)),
-        td(m.funding_index ?? "-"),
-      ], {
-        key: m.name,
-        cls: m.name === selected ? "on" : "pick",
-        onClick: () => onSelect(m.name),
-      }));
-      return html`<section className="markets"><table>
-        <thead>${tr([
-          td("market", { cls: "l" }), td("mark"), td("oracle"), td("funding"),
-        ])}</thead>
-        <tbody>${rows.length ? rows : tr([td("none", { cls: "l", span: 4 })])}</tbody>
-      </table></section>`;
     }
 
     function spreadMid(book) {
       if (book == null || book.best_bid == null || book.best_ask == null) {
-        return { spread: null, mid: null };
+        return { spread: null, mid: null, pct: "-" };
       }
       const bid = bi(book.best_bid);
       const ask = bi(book.best_ask);
-      return { spread: ask - bid, mid: (bid + ask) / 2n };
+      const mid = (bid + ask) / 2n;
+      const spread = ask - bid;
+      let pct = "-";
+      if (mid > 0n) {
+        const milli = (spread * 100000n) / mid;
+        pct = (milli / 1000n).toString() + "." + (milli % 1000n).toString().padStart(3, "0") + "%";
+      }
+      return { spread, mid, pct };
     }
 
-    const CHART_LIMIT = 80;
+    function priceOf(src) {
+      if (!src) return null;
+      if (src.mark_price != null) return src.mark_price;
+      if (src.best_bid != null && src.best_ask != null) return (bi(src.best_bid) + bi(src.best_ask)) / 2n;
+      return src.best_bid ?? src.best_ask ?? src.oracle_price ?? null;
+    }
 
-    function quoteOf(src) {
-      if (src == null) return null;
-      const oracle = src.oracle_price ?? null;
-      if (src.mark_price != null) return { kind: "mark", price: src.mark_price, oracle };
-      const bid = src.best_bid;
-      const ask = src.best_ask;
-      if (bid != null && ask != null) return { kind: "mid", price: (bi(bid) + bi(ask)) / 2n, oracle };
-      if (bid != null) return { kind: "bid", price: bid, oracle };
-      if (ask != null) return { kind: "ask", price: ask, oracle };
-      if (oracle != null) return { kind: "oracle", price: oracle, oracle };
-      return null;
+    function note(book, price, at) {
+      const value = Number(bi(price)) / 1e6;
+      const sec = book.sec || [];
+      const lastS = sec[sec.length - 1];
+      const offset = book.offset;
+      if (at != null && offset == null) return book;
+      const stamped = at != null && Number(at) > 0 ? Math.floor(Number(at) / 1000) + offset : null;
+      const time = stamped == null ? (lastS ? lastS.time : null) : stamped;
+      if (time == null || (lastS && time < lastS.time)) return book;
+      const nextSec = (lastS && lastS.time === time ? sec.slice(0, -1) : sec).concat([{ time, value }]).slice(-180);
+      const minute = time - (time % 60);
+      const bars = book.bars || [];
+      const lastB = bars[bars.length - 1];
+      if (lastB && minute < lastB.time) return { ...book, sec: nextSec };
+      const bar = !lastB || lastB.time !== minute
+        ? { time: minute, open: value, high: value, low: value, close: value }
+        : { ...lastB, high: Math.max(lastB.high, value), low: Math.min(lastB.low, value), close: value };
+      const nextBars = (lastB && lastB.time === minute ? bars.slice(0, -1) : bars).concat([bar]).slice(-60);
+      return { offset, sec: nextSec, bars: nextBars };
+    }
+
+    function seed(book, rows) {
+      let max = 0;
+      for (const row of rows) if (Number(row.timestamp_ms) > max) max = Number(row.timestamp_ms);
+      let next = book.offset != null ? book : { ...book, offset: max > 0 ? Math.floor(Date.now() / 1000) - Math.floor(max / 1000) : 0 };
+      for (let i = rows.length - 1; i >= 0; i--) if (rows[i].price != null) next = note(next, rows[i].price, rows[i].timestamp_ms);
+      return next;
     }
 
     function remember(series, market, src) {
-      const point = quoteOf(src);
-      if (!point) return series;
-      const prev = series[market] || [];
-      return { ...series, [market]: prev.concat([point]).slice(-CHART_LIMIT) };
+      const price = priceOf(src);
+      if (price == null) return series;
+      return { ...series, [market]: note(series[market] || {}, price) };
     }
 
-    function pathOf(values, width, height, min, max) {
-      const flat = max === min;
-      const span = flat ? 1n : max - min;
-      const pts = [];
-      values.forEach((value, i) => {
-        if (value == null) return;
-        const x = values.length < 2 ? 0 : (i * (width - 1)) / (values.length - 1);
-        const y = flat ? height / 2 : Number(((max - bi(value)) * BigInt(height)) / span);
-        pts.push(x.toFixed(1) + "," + Math.max(0, Math.min(height, y)).toFixed(1));
-      });
-      if (pts.length === 1) pts.push(width + "," + pts[0].split(",")[1]);
-      return pts.join(" ");
+    function rememberPrint(series, market, trade) {
+      if (trade.price == null) return series;
+      return { ...series, [market]: note(series[market] || {}, trade.price, trade.timestamp_ms) };
     }
 
     function Chart({ market, points }) {
-      const width = 320;
-      const height = 96;
-      const last = points[points.length - 1];
-      const prices = points.map((point) => point.price).filter((value) => value != null).map(bi);
-      if (!last || !prices.length) {
-        return html`<section className="chart"><b>${market || "chart"}</b><div>no price</div></section>`;
-      }
-      const oracles = points.map((point) => point.oracle);
-      const bounds = prices.concat(oracles.filter((value) => value != null).map(bi));
-      const min = bounds.reduce((a, b) => (a < b ? a : b));
-      const max = bounds.reduce((a, b) => (a > b ? a : b));
-      const price = pathOf(points.map((point) => point.price), width, height, min, max);
-      const oracle = pathOf(oracles, width, height, min, max);
-      const hasOracle = oracles.some((value) => value != null);
+      const host = useRef(null);
+      const api = useRef(null);
+      const [span, setSpan] = useState("1m");
+      useEffect(() => {
+        const edge = "rgba(0, 0, 0, 0.25)";
+        const chart = createChart(host.current, {
+          autoSize: true,
+          layout: { background: { type: ColorType.Solid, color: "#fff" }, textColor: "#000", fontFamily: "sans-serif", fontSize: 12, attributionLogo: false },
+          grid: { vertLines: { color: "rgba(0, 0, 0, 0.12)" }, horzLines: { color: "rgba(0, 0, 0, 0.12)" } },
+          rightPriceScale: { borderColor: edge },
+          timeScale: { borderColor: edge, timeVisible: true, secondsVisible: false, barSpacing: 12, rightOffset: 4 },
+          crosshair: { vertLine: { color: "#000", labelBackgroundColor: "#000" }, horzLine: { color: "#000", labelBackgroundColor: "#000" } },
+        });
+        api.current = {
+          chart,
+          candles: chart.addSeries(CandlestickSeries, {
+            upColor: "#18803a", downColor: "#c62828", borderUpColor: "#18803a", borderDownColor: "#c62828", wickUpColor: "#18803a", wickDownColor: "#c62828",
+          }),
+          line: chart.addSeries(LineSeries, { color: "#000", lineWidth: 2 }),
+        };
+        return () => { chart.remove(); api.current = null; };
+      }, []);
+      useEffect(() => {
+        const plot = api.current;
+        if (!plot) return;
+        const seconds = span === "1s";
+        plot.chart.applyOptions({ timeScale: { secondsVisible: seconds } });
+        plot.candles.setData(seconds ? [] : points.bars || []);
+        plot.line.setData(seconds ? points.sec || [] : []);
+      }, [points, span]);
+      const rows = span === "1s" ? points.sec : points.bars;
+      const last = rows && rows.length ? rows[rows.length - 1] : null;
+      const shown = last ? (span === "1s" ? last.value : last.close) : null;
       return html`<section className="chart">
-        <div className="row"><b>${market || "chart"}</b><span>${last.kind} ${fmt(last.price)}</span><span>oracle ${fmt(last.oracle)}</span></div>
-        <svg viewBox=${"0 0 " + width + " " + height} preserveAspectRatio="none">
-          <polyline points=${price} fill="none" stroke="#000" strokeWidth="1.5" />
-          ${hasOracle ? html`<polyline points=${oracle} fill="none" stroke="#000" strokeWidth="1" strokeDasharray="3 2" />` : null}
-          <text x="4" y="11">${fmt(max)}</text>
-          ${min === max ? null : html`<text x="4" y=${height - 4}>${fmt(min)}</text>`}
-        </svg>
+        <div className="row"><b>${market || "chart"}</b><button type="button" className=${span === "1m" ? "on" : ""} onClick=${() => setSpan("1m")}>1m</button><button type="button" className=${span === "1s" ? "on" : ""} onClick=${() => setSpan("1s")}>1s</button><span>${shown == null ? "no price" : shown.toFixed(6)}</span><a href="https://www.tradingview.com/" target="_blank" rel="noreferrer">TradingView</a></div>
+        <div className="plot" ref=${host}></div>
       </section>`;
     }
 
-    function Book({ market, book, onPrice }) {
-      const asks = (book?.asks || []).slice(0, 20);
-      const bids = (book?.bids || []).slice(0, 20);
-      let max = 1n;
-      for (const level of asks.concat(bids)) {
-        const sz = bi(level[1]);
-        if (sz > max) max = sz;
-      }
-      const levelRow = (level, key) => {
-        const sz = bi(level[1]);
-        let pct = Number((sz * 100n) / max);
-        if (sz > 0n && pct < 1) pct = 1;
-        const bar = html`<span className="bar" style=${{ width: pct + "%" }}></span>`;
-        return tr([
-          td(html`<button type="button" className="px" onClick=${() => onPrice(level[0])}>${fmt(level[0])}</button>`, { cls: "l" }),
-          td(bar, { cls: "bar" }),
-          td(fmt(sz)),
-        ], { key });
+    function Tape({ prints, tint }) {
+      const rows = (prints || []).slice(0, 40).map((p) => tr([
+        td(p.height),
+        td(p.side, { cls: "l" }),
+        td(fmt(p.price), tint ? { cls: p.side === "buy" ? "bid" : "ask" } : {}),
+        td(fmt(p.size)),
+      ], { key: "p" + p.seq }));
+      return html`<section className="tape"><table>
+        <thead>${tr([td("h"), td("side", { cls: "l" }), td("price"), td("size")])}</thead>
+        <tbody>${rows.length ? rows : tr([td("none", { cls: "l", span: 4 })])}</tbody>
+      </table></section>`;
+    }
+
+    function Book({ book, onPrice }) {
+      const levels = (side) => (book?.[side] || []).slice(0, 14);
+      const totals = (rows) => {
+        let sum = 0n;
+        return rows.map((level) => {
+          const size = bi(level[1]);
+          sum += size;
+          return { price: level[0], size, total: sum };
+        });
       };
-      const { spread, mid } = spreadMid(book);
-      const body = [...asks].reverse().map((level, i) => levelRow(level, "a" + level[0] + ":" + i));
-      body.push(tr([
-        td("spread " + fmt(spread) + " mid " + fmt(mid), { cls: "l", span: 3 }),
-      ], { key: "mid" }));
-      for (let i = 0; i < bids.length; i++) body.push(levelRow(bids[i], "b" + bids[i][0] + ":" + i));
+      const askRows = totals(levels("asks")).reverse();
+      const bidRows = totals(levels("bids"));
+      let max = 1n;
+      for (const row of askRows.concat(bidRows)) if (row.total > max) max = row.total;
+      const levelRow = (row, side, key) => {
+        let pct = Number((row.total * 100n) / max);
+        if (row.total > 0n && pct < 1) pct = 1;
+        return tr([
+          td(html`<button type="button" className=${"px " + side} onClick=${() => onPrice(row.price)}>${fmt(row.price)}</button>`, { cls: "l" }),
+          td(fmt(row.size)),
+          td(fmt(row.total)),
+        ], { key, cls: side, style: { "--w": pct + "%" } });
+      };
+      const { spread, pct } = spreadMid(book);
+      const body = [];
+      for (let i = 0; i < askRows.length; i++) body.push(levelRow(askRows[i], "ask", "a" + askRows[i].price));
+      body.push(tr([td("Spread", { cls: "l" }), td(fmt(spread)), td(pct)], { key: "mid", cls: "mid" }));
+      for (let i = 0; i < bidRows.length; i++) body.push(levelRow(bidRows[i], "bid", "b" + bidRows[i].price));
       return html`<section className="book"><table>
-        <thead>${tr([td(market || "book", { cls: "l" }), td(""), td("size")])}</thead>
+        <thead>${tr([td("Price", { cls: "l" }), td("Size"), td("Total")])}</thead>
         <tbody>${body}</tbody>
       </table></section>`;
+    }
+
+    function Ladder({ market, book, prints, onPrice }) {
+      const [tab, setTab] = useState("book");
+      const names = [["book", "Order Book"], ["trades", "Trades"]];
+      const mine = (prints || []).filter((p) => p.market === market);
+      return html`<section className="depth">${[
+        html`<div className="tabs">${names.map(([id, label]) => html`<button type="button" key=${id} className=${tab === id ? "on" : ""} onClick=${() => setTab(id)}>${label}</button>`)}</div>`,
+        tab === "book"
+          ? html`<${Book} book=${book} onPrice=${onPrice} />`
+          : html`<${Tape} prints=${mine} tint=${true} />`,
+      ]}</section>`;
+    }
+
+    function Dock({ tab, setTab, account, markets, orders, onCancel, prints, blocks }) {
+      const tabs = ["positions", "orders", "trades", "blocks"];
+      let pane = html`<${Feed} blocks=${blocks} />`;
+      if (tab === "positions") pane = html`<${Account} account=${account} markets=${markets} />`;
+      else if (tab === "orders") pane = html`<${Cancel} orders=${orders} onCancel=${onCancel} />`;
+      else if (tab === "trades") pane = html`<${Tape} prints=${prints} />`;
+      return html`<section className="dock">
+        <div className="tabs">${tabs.map((name) => html`<button type="button" key=${name} className=${tab === name ? "on" : ""} onClick=${() => setTab(name)}>${name}</button>`)}</div>
+        <div className="pane">${pane}</div>
+      </section>`;
     }
 
     function gridNote(market, size, price, orderType) {
@@ -612,6 +708,8 @@
       const [series, setSeries] = useState({});
       const [selected, setSelected] = useState("");
       const [feed, setFeed] = useState([]);
+      const [prints, setPrints] = useState([]);
+      const [tab, setTab] = useState("positions");
       const [hex, setHex] = useState("");
       const [key, setKey] = useState(null);
       const [keyError, setKeyError] = useState("");
@@ -639,6 +737,9 @@
         } else if (msg.type === "book") {
           setBooks((prev) => ({ ...prev, [msg.market]: msg }));
           setSeries((prev) => remember(prev, msg.market, msg));
+        } else if (msg.type === "trade") {
+          setPrints((xs) => (xs.some((p) => p.seq === msg.seq) ? xs : [msg, ...xs].slice(0, 40)));
+          setSeries((prev) => rememberPrint(prev, msg.market, msg));
         }
       };
       const ws = useWebSocket("/ws", onWs);
@@ -678,16 +779,24 @@
       useEffect(() => {
         if (!selected) return;
         let stop = false;
-        fetch("/book/" + encodeURIComponent(selected) + "?levels=20").then(async (res) => {
-          if (!stop && res.ok) {
-            const book = await res.json();
-            setBooks((prev) => ({ ...prev, [selected]: book }));
-            setSeries((prev) => remember(prev, selected, book));
-          }
-        }).catch(() => {});
-        return () => {
-          stop = true;
+        const load = async (limit) => {
+          const res = await fetch("/trades?market=" + encodeURIComponent(selected) + "&limit=" + limit);
+          if (stop || !res.ok) return;
+          const rows = await res.json();
+          setPrints(rows.slice(0, 40));
+          setSeries((prev) => ({ ...prev, [selected]: seed(prev[selected] || {}, rows) }));
         };
+        let id = 0;
+        load(20000).then(async () => {
+          if (stop) return;
+          const res = await fetch("/book/" + encodeURIComponent(selected) + "?levels=20");
+          if (stop || !res.ok) return;
+          const book = await res.json();
+          setBooks((prev) => ({ ...prev, [selected]: book }));
+          setSeries((prev) => remember(prev, selected, book));
+          if (!stop) id = setInterval(() => { load(200).catch(() => {}); }, 1000);
+        }).catch(() => {});
+        return () => { stop = true; clearInterval(id); };
       }, [selected]);
 
       useEffect(() => {
@@ -859,19 +968,21 @@
       }
 
       const shell = [
-        html`<${Header} status=${status} ws=${ws} />`,
-        html`<${Markets} markets=${markets} selected=${selected} onSelect=${setSelected} />`,
-        html`<section className="center">${[
-          html`<${Chart} market=${selected} points=${series[selected] || []} />`,
-          html`<${Book} market=${selected} book=${book} onPrice=${(px) => patch({ price: unscale(px), type: "limit" })} />`,
-        ]}</section>`,
+        html`<${Header} status=${status} ws=${ws} market=${market} markets=${markets} selected=${selected} onSelect=${setSelected} last=${prints[0]} />`,
+        html`<${Chart} market=${selected} points=${series[selected] || {}} />`,
+        html`<${Ladder} market=${selected} book=${book} prints=${prints} onPrice=${(px) => patch({ price: unscale(px), type: "limit" })} />`,
         html`<section className="side">${[
           html`<${KeyBox} hex=${hex} trader=${key?.trader || ""} error=${keyError} onHex=${onHex} onGenerate=${onGenerate} />`,
+          html`<div className="pad">
+            <b>account</b> ${account ? "" : "none"}
+            <div>collateral ${fmt(account?.collateral ?? 0)}</div>
+            <div>value ${fmt(account?.account_value ?? 0)}</div>
+            <div>margin ${fmt(account?.maintenance_margin ?? 0)}</div>
+          </div>`,
           html`<${OrderForm} form=${form} patch=${patch} market=${market} book=${book} nonce=${nonce} orderId=${nextId.current} pending=${pending} note=${note} bad=${bad} onSubmit=${place} />`,
           html`<${Cancel} orders=${orders} onCancel=${onCancel} />`,
-          html`<${Account} account=${account} markets=${markets} />`,
         ]}</section>`,
-        html`<${Feed} blocks=${feed} />`,
+        html`<${Dock} tab=${tab} setTab=${setTab} account=${account} markets=${markets} orders=${orders} onCancel=${onCancel} prints=${prints} blocks=${feed} />`,
       ];
       return html`<div className="app">${shell}</div>`;
     }
