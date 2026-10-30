@@ -31,6 +31,11 @@ class State:
         self.funding_index: dict[str, int] = {m.name: 0 for m in markets}
         self.bridge = Bridge()
 
+    def nonce(self, trader: str) -> int:
+        """Last committed nonce; 0 for an account that has never sent a tx."""
+        account = self.accounts.get(trader)
+        return account.nonce if account else 0
+
     def apply_block(self, block: Block) -> None:
         """Apply every tx, then end-of-block work: oracle median, marks, funding, liquidations."""
         raise NotImplementedError

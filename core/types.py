@@ -8,7 +8,8 @@ deterministic across validators.
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass, field
+import json
+from dataclasses import dataclass, field, fields, is_dataclass
 from enum import Enum
 from typing import Literal
 
@@ -23,6 +24,29 @@ USDC_SCALE = 10**6  # balances are integers in 1e-6 USDC
 
 def sha256(data: bytes) -> Hash:
     return hashlib.sha256(data).digest()
+
+
+def canonical(value: object) -> object:
+    """A JSON-ready tree with one fixed shape per value, so every node hashes it identically."""
+    if is_dataclass(value) and not isinstance(value, type):
+        return {f.name: canonical(getattr(value, f.name)) for f in fields(value)}
+    match value:
+        case bool() | int() | str() | None:
+            return value
+        case bytes():
+            return value.hex()
+        case Enum():
+            return value.value
+        case tuple() | list():
+            return [canonical(item) for item in value]
+        case dict():
+            return {str(key): canonical(item) for key, item in value.items()}
+    raise TypeError(f"cannot encode {type(value).__name__}")
+
+
+def encode(value: object) -> bytes:
+    """Canonical bytes for hashing and signing: sorted keys, no whitespace, never repr/pickle."""
+    return json.dumps(canonical(value), sort_keys=True, separators=(",", ":")).encode()
 
 
 # ---------------------------------------------------------------- consensus
@@ -56,7 +80,7 @@ class Block:
     timestamp_ms: int
 
     def to_bytes(self) -> bytes:
-        raise NotImplementedError  # canonical encoding, used for hashing and signing
+        return encode(self)
 
     @property
     def hash(self) -> Hash:
@@ -245,7 +269,13 @@ TxBody = PlaceOrder | CancelOrder | SetOraclePrice | PostHeader | Deposit | With
 
 @dataclass(frozen=True)
 class Tx:
+    """`signer` is the hex Ed25519 public key, so the tx carries what is needed to verify it.
+    `nonce` must be exactly the signer's last committed nonce + 1."""
+
     body: TxBody
     signer: str
     nonce: int
     sig: bytes
+
+    def signing_bytes(self) -> bytes:
+        return encode((self.body, self.signer, self.nonce))
