@@ -2,17 +2,30 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from core.node import Node, public_key
+from core.types import Market
 from sim.net import MemoryNetwork
 
 
 class Cluster:
-    def __init__(self, n: int = 4, seed: int = 0, drop: float = 0.0) -> None:
+    def __init__(
+        self,
+        n: int = 4,
+        seed: int = 0,
+        drop: float = 0.0,
+        markets: list[Market] | None = None,
+        price_feed: Callable[[], dict[str, int]] | None = None,
+    ) -> None:
         self.n = n
         self.net = MemoryNetwork(n, delay_ms=(0, 0), drop=drop, seed=seed)
         keys = [(seed * 100 + i + 1).to_bytes(32, "big") for i in range(n)]
         pubs = {i: public_key(key) for i, key in enumerate(keys)}
-        self.nodes = [Node(i, n, keys[i], pubs, [], self.net.endpoint(i)) for i in range(n)]
+        books = list(markets or [])
+        self.nodes = [
+            Node(i, n, keys[i], pubs, books, self.net.endpoint(i), price_feed) for i in range(n)
+        ]
         for node in self.nodes:
             node.start()
 
