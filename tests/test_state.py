@@ -15,9 +15,11 @@ from core.types import (
     Order,
     OrderType,
     PlaceOrder,
+    Position,
     SetOraclePrice,
     Side,
     Tx,
+    Withdraw,
 )
 
 MARKET = Market("BTC-PERP", tick_size=1, lot_size=1, max_leverage=10, maintenance_margin_bps=300)
@@ -190,6 +192,36 @@ def test_a_fill_that_flips_the_position_opens_the_remainder() -> None:
     assert state.accounts[bob].positions["BTC-PERP"].size == -ONE
     assert state.accounts[bob].positions["BTC-PERP"].entry_notional == 50_000 * USDC_SCALE
     assert state.accounts[bob].collateral == 955 * USDC_SCALE
+
+
+def test_margin_marks_positions_to_market_and_sums_maintenance() -> None:
+    eth = Market("ETH-PERP", tick_size=1, lot_size=1, max_leverage=10, maintenance_margin_bps=500)
+    state = State([MARKET, eth])
+    state.accounts["alice"] = Account(
+        "alice",
+        collateral=1_000 * USDC_SCALE,
+        positions={
+            "BTC-PERP": Position("BTC-PERP", size=ONE, entry_notional=50_000 * USDC_SCALE),
+            "ETH-PERP": Position("ETH-PERP", size=-2 * ONE, entry_notional=3_000 * USDC_SCALE),
+        },
+    )
+    assert state.margin("nobody") == (0, 0)
+    state.mark_prices["BTC-PERP"] = 60_000 * PRICE_SCALE
+    assert state.margin("alice") == (11_000 * USDC_SCALE, 1_800 * USDC_SCALE)
+    state.mark_prices["ETH-PERP"] = 2_000 * PRICE_SCALE
+    assert state.margin("alice") == (10_000 * USDC_SCALE, 2_000 * USDC_SCALE)
+
+
+def test_withdraw_keeps_collateral_that_maintenance_still_needs() -> None:
+    state = State([MARKET])
+    alice = fund(state, ALICE, 10_000 * USDC_SCALE)
+    state.accounts[alice].positions["BTC-PERP"] = Position(
+        "BTC-PERP", size=ONE, entry_notional=50_000 * USDC_SCALE
+    )
+    state.mark_prices["BTC-PERP"] = 50_000 * PRICE_SCALE
+    state.apply_tx(sign_tx(ALICE, Withdraw(alice, 9_000 * USDC_SCALE, 1, "dest"), 1), 0)
+    assert state.accounts[alice].collateral == 10_000 * USDC_SCALE
+    assert state.nonce(alice) == 1
 
 
 def test_off_tick_or_off_lot_orders_do_not_reach_the_book() -> None:

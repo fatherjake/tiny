@@ -159,7 +159,7 @@ class State:
         if body.trader != signer or body.amount <= 0:
             return
         account = self.accounts[signer]
-        if body.amount > account.collateral:
+        if body.amount > self._free_collateral(signer):
             return
         account.collateral -= body.amount
         self.withdrawal_nonce += 1
@@ -229,8 +229,33 @@ class State:
         return
 
     def margin(self, trader: str) -> tuple[int, int]:
-        """(account value, maintenance margin required)."""
-        raise NotImplementedError
+        """(account value, maintenance margin required), both at mark prices."""
+        account = self.accounts.get(trader)
+        if account is None:
+            return 0, 0
+        value = account.collateral
+        required = 0
+        for market in sorted(account.positions):
+            pos = account.positions[market]
+            if pos.size == 0:
+                continue
+            mark = self.mark_prices.get(market)
+            if mark is None:
+                continue
+            notional = abs(pos.size) * mark // PRICE_SCALE
+            if pos.size > 0:
+                value += notional - pos.entry_notional
+            else:
+                value += pos.entry_notional - notional
+            required += notional * self.markets[market].maintenance_margin_bps // 10_000
+        return value, required
+
+    def _free_collateral(self, trader: str) -> int:
+        account = self.accounts[trader]
+        value, required = self.margin(trader)
+        if value < required:
+            return 0
+        return min(account.collateral, value - required)
 
     def liquidate(self) -> None:
         return
