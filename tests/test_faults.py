@@ -1,14 +1,9 @@
 """Fault scenarios. Each checks liveness (commits keep happening) and safety (every live node has
-the same committed chain and state root). Marked xfail until the components are implemented."""
-
-import pytest
+the same committed chain and state root)."""
 
 from tests.cluster import Cluster
 
-pending = pytest.mark.xfail(raises=NotImplementedError, reason="not implemented yet", strict=True)
 
-
-@pending
 def test_happy_path_commits():
     c = Cluster(n=4)
     c.run_for(2_000)
@@ -16,7 +11,6 @@ def test_happy_path_commits():
     assert len(c.state_roots()) == 1
 
 
-@pending
 def test_one_crashed_node_stays_live():
     c = Cluster(n=4)
     c.net.kill(3)
@@ -25,7 +19,6 @@ def test_one_crashed_node_stays_live():
     assert len(c.state_roots()) == 1
 
 
-@pending
 def test_two_crashed_nodes_halt_but_stay_safe():
     c = Cluster(n=4)
     c.run_for(1_000)
@@ -36,7 +29,6 @@ def test_two_crashed_nodes_halt_but_stay_safe():
     assert c.heights()[:2] == before[:2]
 
 
-@pending
 def test_partition_heals():
     c = Cluster(n=4)
     c.net.partition({0, 1}, {2, 3})
@@ -46,7 +38,6 @@ def test_partition_heals():
     assert len(c.state_roots(alive_only=False)) == 1
 
 
-@pending
 def test_lossy_network_stays_safe():
     c = Cluster(n=4, drop=0.2, seed=1)
     c.run_for(10_000)

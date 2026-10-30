@@ -170,6 +170,8 @@ class Node:
         validators.add(public_key(private_key).hex())
         self.state = State(markets, validators)
         self.committed: list[Block] = []
+        pubs = dict(validator_pubkeys)
+        pubs[node_id] = public_key(private_key)
         self.replica = Replica(
             node_id,
             n,
@@ -177,15 +179,26 @@ class Node:
             broadcast=transport.broadcast,
             on_commit=self.on_commit,
             mempool=self.mempool.take,
+            private_key=private_key,
+            pubkeys=pubs,
         )
         transport.on_message(self.on_message)
 
     def start(self) -> None:
-        """Start the pacemaker timer and the price submitter."""
-        raise NotImplementedError
+        """Start the pacemaker. The price submitter stays off until the feed exists."""
+        schedule = getattr(self.transport, "call_later", None)
+        cancel = getattr(self.transport, "cancel", None)
+        now_ms = getattr(self.transport, "now_ms", None)
+        if callable(schedule):
+            self.replica.schedule = schedule
+        if callable(cancel):
+            self.replica.cancel = cancel
+        if callable(now_ms):
+            self.replica.now_ms = now_ms
+        self.replica.start()
 
     def stop(self) -> None:
-        raise NotImplementedError
+        self.replica.stop()
 
     def submit(self, tx: Tx) -> bool:
         """Entry point for the API: check it, add it to the mempool, gossip it to the other nodes.
