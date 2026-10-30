@@ -75,7 +75,7 @@ def test_gossiped_tx_is_not_rebroadcast() -> None:
     assert transport.broadcasts == []
 
 
-def test_take_orders_caps_and_skips_in_flight() -> None:
+def test_take_orders_caps_and_skips_proposed() -> None:
     pool = Mempool(max_block_txs=2)
     for tx in [cancel(3), cancel(1), cancel(2)]:
         pool.add(tx)
@@ -91,6 +91,6 @@ def test_remove_committed_drops_used_nonces_and_retries_abandoned() -> None:
     pool.take()  # all three proposed in a block that will never commit
     pool.remove_committed(block_of(cancel(1)), lambda signer: 2)
     assert list(pool.pending) == [(cancel(5).signer, 5)]
-    assert pool.take() == []  # still in flight
+    assert pool.take() == []  # still proposed
     pool.remove_committed(block_of(), lambda signer: 2)
     assert [tx.nonce for tx in pool.take()] == [5]

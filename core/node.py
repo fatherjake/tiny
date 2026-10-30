@@ -79,7 +79,7 @@ class Mempool:
     duplicate that slips into two blocks is rejected when the second one is applied.
 
     In chained HotStuff the next block is proposed before the last one commits, so txs already in
-    an uncommitted proposal are marked in flight and skipped by take(). If that proposal never
+    an uncommitted proposal are marked proposed and skipped by take(). If that proposal never
     commits (its leader timed out), they become takeable again after `retry_after` commits.
     """
 
@@ -90,7 +90,7 @@ class Mempool:
         self.max_pending = max_pending
         self.retry_after = retry_after
         self.pending: dict[TxKey, Tx] = {}
-        self.in_flight: dict[TxKey, int] = {}  # key -> self.commits when it was proposed
+        self.proposed: dict[TxKey, int] = {}  # key -> self.commits when it was proposed
         self.commits = 0
 
     def add(self, tx: Tx) -> bool:
@@ -102,30 +102,28 @@ class Mempool:
 
     def take(self) -> list[Tx]:
         """Txs for a new proposal, sorted by (signer, nonce) so each signer's nonces go in order."""
-        ready = sorted(key for key in self.pending if key not in self.in_flight)
+        ready = sorted(key for key in self.pending if key not in self.proposed)
         txs = [self.pending[key] for key in ready[: self.max_block_txs]]
         self.mark_proposed(txs)
         return txs
 
     def mark_proposed(self, txs: tuple[Tx, ...] | list[Tx]) -> None:
         for tx in txs:
-            self.in_flight.setdefault((tx.signer, tx.nonce), self.commits)
+            self.proposed.setdefault((tx.signer, tx.nonce), self.commits)
 
     def remove_committed(self, block: Block, nonce_of: Callable[[str], int]) -> None:
-        """Drop the block's txs, any tx whose nonce is now used, and stale in-flight marks."""
+        """Drop the block's txs, any tx whose nonce is now used, and stale proposed marks."""
         self.commits += 1
         for tx in block.txs:
             self.pending.pop((tx.signer, tx.nonce), None)
-            self.in_flight.pop((tx.signer, tx.nonce), None)
+            self.proposed.pop((tx.signer, tx.nonce), None)
         stale = [key for key in self.pending if key[1] <= nonce_of(key[0])]
         for key in stale:
             del self.pending[key]
-            self.in_flight.pop(key, None)
-        expired = [
-            key for key, at in self.in_flight.items() if self.commits - at > self.retry_after
-        ]
+            self.proposed.pop(key, None)
+        expired = [key for key, at in self.proposed.items() if self.commits - at > self.retry_after]
         for key in expired:
-            del self.in_flight[key]
+            del self.proposed[key]
 
 
 # ---------------------------------------------------------------- node
