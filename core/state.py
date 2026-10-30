@@ -16,6 +16,7 @@ from typing import assert_never
 from core.book import OrderBook
 from core.bridge import Bridge
 from core.types import (
+    PRICE_SCALE,
     Account,
     Block,
     BridgeMessage,
@@ -28,11 +29,16 @@ from core.types import (
     Order,
     OrderType,
     PlaceOrder,
+    Position,
     PostHeader,
     SetOraclePrice,
+    Side,
     Tx,
     Withdraw,
 )
+
+MAKER_FEE_BPS = 2
+TAKER_FEE_BPS = 5
 
 
 def median_price(submissions: list[OraclePrice]) -> int:
@@ -115,8 +121,16 @@ class State:
         book = self.books[order.market]
         if order.id in book.orders:
             return
-        for fill in book.place(order):
+        fills = book.place(order, position_of=lambda trader: self._open_size(trader, order.market))
+        for fill in fills:
             self.settle_fill(fill)
+
+    def _open_size(self, trader: str, market: str) -> int:
+        account = self.accounts.get(trader)
+        if account is None:
+            return 0
+        position = account.positions.get(market)
+        return position.size if position else 0
 
     def _cancel(self, signer: str, body: CancelOrder) -> None:
         if body.trader != signer:
@@ -162,7 +176,47 @@ class State:
         )
 
     def settle_fill(self, fill: Fill) -> None:
-        raise NotImplementedError
+        maker_side = Side.SELL if fill.taker_side == Side.BUY else Side.BUY
+        self._apply_fill(fill.maker, fill.market, maker_side, fill.price, fill.size, MAKER_FEE_BPS)
+        self._apply_fill(
+            fill.taker, fill.market, fill.taker_side, fill.price, fill.size, TAKER_FEE_BPS
+        )
+
+    def _apply_fill(
+        self, trader: str, market: str, side: Side, price: int, size: int, fee_bps: int
+    ) -> None:
+        account = self._account(trader)
+        pos = account.positions.get(market)
+        if pos is None:
+            pos = Position(market, funding_index=self.funding_index[market])
+            account.positions[market] = pos
+        notional = price * size // PRICE_SCALE
+        account.collateral -= notional * fee_bps // 10_000
+        signed = size if side == Side.BUY else -size
+        old = pos.size
+        new = old + signed
+        if old == 0 or (old > 0) == (signed > 0):
+            pos.size = new
+            pos.entry_notional += notional
+            return
+        closing = new == 0 or (new > 0) == (old > 0)
+        closed = size if closing else abs(old)
+        opened = 0 if closing else abs(new)
+        closed_entry = (
+            pos.entry_notional if closed == abs(old) else pos.entry_notional * closed // abs(old)
+        )
+        closed_notional = price * closed // PRICE_SCALE
+        if old > 0:
+            account.collateral += closed_notional - closed_entry
+        else:
+            account.collateral += closed_entry - closed_notional
+        if new == 0:
+            del account.positions[market]
+            return
+        pos.size = new
+        pos.entry_notional = (
+            price * opened // PRICE_SCALE if opened else pos.entry_notional - closed_entry
+        )
 
     def update_oracle_prices(self) -> None:
         """Median of this block's submissions per market."""

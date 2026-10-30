@@ -3,7 +3,11 @@ import pytest
 from core.node import public_key, sign_tx
 from core.state import State
 from core.types import (
+    PRICE_SCALE,
     QC,
+    SIZE_SCALE,
+    USDC_SCALE,
+    Account,
     Block,
     CancelOrder,
     Market,
@@ -98,6 +102,94 @@ def test_place_and_cancel_for_another_trader_are_skipped() -> None:
     state.apply_tx(sign_tx(OTHER, CancelOrder("alice", "BTC-PERP", 1), 2), 0)
     assert state.nonce(signer) == 2
     assert state.books["BTC-PERP"].orders == {}
+
+
+ALICE = bytes(range(4, 36))
+BOB = bytes(range(5, 37))
+ONE = SIZE_SCALE
+PX = 50_000 * PRICE_SCALE
+
+
+def fund(state: State, key: bytes, collateral: int) -> str:
+    trader = public_key(key).hex()
+    state.accounts[trader] = Account(trader, collateral=collateral)
+    return trader
+
+
+def place(
+    key: bytes,
+    nonce: int,
+    order_id: int,
+    side: Side,
+    price: int,
+    size: int,
+    order_type: OrderType = OrderType.LIMIT,
+    reduce_only: bool = False,
+) -> Tx:
+    trader = public_key(key).hex()
+    order = Order(order_id, trader, "BTC-PERP", side, order_type, price, size, reduce_only)
+    return sign_tx(key, PlaceOrder(order), nonce)
+
+
+def test_fills_charge_fees_and_open_signed_positions() -> None:
+    state = State([MARKET])
+    alice = fund(state, ALICE, 1_000 * USDC_SCALE)
+    bob = fund(state, BOB, 1_000 * USDC_SCALE)
+    state.apply_tx(place(ALICE, 1, 1, Side.SELL, PX, ONE), 0)
+    state.apply_tx(place(BOB, 1, 2, Side.BUY, 0, ONE, OrderType.MARKET), 0)
+    assert state.accounts[alice].positions["BTC-PERP"].size == -ONE
+    assert state.accounts[alice].positions["BTC-PERP"].entry_notional == 50_000 * USDC_SCALE
+    assert state.accounts[alice].collateral == 990 * USDC_SCALE
+    assert state.accounts[bob].positions["BTC-PERP"].size == ONE
+    assert state.accounts[bob].positions["BTC-PERP"].entry_notional == 50_000 * USDC_SCALE
+    assert state.accounts[bob].collateral == 975 * USDC_SCALE
+
+
+def test_closing_realizes_pnl_and_reduce_only_cannot_flip() -> None:
+    state = State([MARKET])
+    alice = fund(state, ALICE, 20_000 * USDC_SCALE)
+    bob = fund(state, BOB, 20_000 * USDC_SCALE)
+    state.apply_tx(place(ALICE, 1, 1, Side.SELL, PX, ONE), 0)
+    state.apply_tx(place(BOB, 1, 2, Side.BUY, 0, ONE, OrderType.MARKET), 0)
+    state.apply_tx(place(ALICE, 2, 3, Side.BUY, 60_000 * PRICE_SCALE, ONE), 0)
+    state.apply_tx(place(BOB, 2, 4, Side.SELL, 0, 5 * ONE, OrderType.MARKET, reduce_only=True), 0)
+    assert "BTC-PERP" not in state.accounts[bob].positions
+    assert "BTC-PERP" not in state.accounts[alice].positions
+    assert state.accounts[bob].collateral == 29_945 * USDC_SCALE
+    assert state.accounts[alice].collateral == 9_978 * USDC_SCALE
+    assert 4 not in state.books["BTC-PERP"].orders
+
+
+def test_a_partial_close_keeps_the_remaining_entry() -> None:
+    state = State([MARKET])
+    alice = fund(state, ALICE, 1_000 * USDC_SCALE)
+    bob = fund(state, BOB, 1_000 * USDC_SCALE)
+    state.apply_tx(place(ALICE, 1, 1, Side.SELL, PX, 2 * ONE), 0)
+    state.apply_tx(place(BOB, 1, 2, Side.BUY, 0, 2 * ONE, OrderType.MARKET), 0)
+    state.apply_tx(place(BOB, 2, 3, Side.SELL, PX, ONE), 0)
+    state.apply_tx(place(ALICE, 2, 4, Side.BUY, 0, ONE, OrderType.MARKET), 0)
+    assert state.accounts[bob].positions["BTC-PERP"].size == ONE
+    assert state.accounts[bob].positions["BTC-PERP"].entry_notional == 50_000 * USDC_SCALE
+    assert state.accounts[bob].collateral == 940 * USDC_SCALE
+    assert state.accounts[alice].positions["BTC-PERP"].size == -ONE
+    assert state.accounts[alice].positions["BTC-PERP"].entry_notional == 50_000 * USDC_SCALE
+    assert state.accounts[alice].collateral == 955 * USDC_SCALE
+
+
+def test_a_fill_that_flips_the_position_opens_the_remainder() -> None:
+    state = State([MARKET])
+    alice = fund(state, ALICE, 1_000 * USDC_SCALE)
+    bob = fund(state, BOB, 1_000 * USDC_SCALE)
+    state.apply_tx(place(ALICE, 1, 1, Side.SELL, PX, ONE), 0)
+    state.apply_tx(place(BOB, 1, 2, Side.BUY, 0, ONE, OrderType.MARKET), 0)
+    state.apply_tx(place(BOB, 2, 3, Side.SELL, PX, 2 * ONE), 0)
+    state.apply_tx(place(ALICE, 2, 4, Side.BUY, 0, 2 * ONE, OrderType.MARKET), 0)
+    assert state.accounts[alice].positions["BTC-PERP"].size == ONE
+    assert state.accounts[alice].positions["BTC-PERP"].entry_notional == 50_000 * USDC_SCALE
+    assert state.accounts[alice].collateral == 940 * USDC_SCALE
+    assert state.accounts[bob].positions["BTC-PERP"].size == -ONE
+    assert state.accounts[bob].positions["BTC-PERP"].entry_notional == 50_000 * USDC_SCALE
+    assert state.accounts[bob].collateral == 955 * USDC_SCALE
 
 
 def test_off_tick_or_off_lot_orders_do_not_reach_the_book() -> None:
