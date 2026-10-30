@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from core.net import MemoryNetwork
 from core.node import Node
+from sim.net import MemoryNetwork
 
 
 class Cluster:

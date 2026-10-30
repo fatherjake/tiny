@@ -1,6 +1,6 @@
 # tiny
 
-A teaching-sized Hyperliquid in Python for Jacob to learn HotStuff and perp DEX internals. Chain components are one file each in `core/`, the playground is in `sim/`, and every file must stay under 1,000 lines (enforced by `scripts/check_loc.py`). Keep `types.py` data-only so it can't be used to dodge the limit.
+A teaching-sized Hyperliquid in Python for Jacob to learn HotStuff and perp DEX internals. Chain components are one file each in `core/`, the playground is in `sim/`, and every file in `core/` must stay under 1,000 lines (enforced by `scripts/check_loc.py`). Keep `types.py` data-only so it can't be used to dodge the limit.
 
 ## Commands
 

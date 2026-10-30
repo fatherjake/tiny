@@ -1,19 +1,19 @@
 # tiny
 
-A teaching-sized Hyperliquid in Python. Each component is one file, and no file may reach 1,000 lines.
+A teaching-sized Hyperliquid in Python. Each chain component is one file in `core/`, and no file there may reach 1,000 lines. The playground in `sim/` and the tests have no limit.
 
 | File | What it is |
 | --- | --- |
 | `core/types.py` | Shared data types only, no logic |
 | `core/consensus.py` | Chained HotStuff replica and pacemaker |
 | `core/node.py` | One validator: keys, mempool, replica, state, price submissions |
-| `core/net.py` | Transports: in-memory network with faults, and TCP |
+| `core/net.py` | The `Transport` interface and TCP |
 | `core/state.py` | Deterministic state machine: accounts, positions, oracle prices, funding, liquidations |
 | `core/book.py` | Price-time priority order book |
 | `core/bridge.py` | LayerZero v1 style bridge: oracle posts headers, relayer posts Merkle proofs |
 | `core/api.py` | REST and WebSocket API |
 | `core/ui.html` | Single-page trading UI |
-| `sim/` | Playground: a whole cluster in one process with bots (`bots.py`), a fake price feed (`feed.py`) and the API |
+| `sim/` | Playground: a whole cluster in one process with bots (`bots.py`), a fake price feed (`feed.py`), an in-memory network with faults (`net.py`) and the API |
 
 Consensus only orders transactions. Every validator applies committed blocks to `State` and must get the same result, so the state machine uses integers only, block timestamps instead of the clock, and no randomness.
 

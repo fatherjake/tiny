@@ -9,7 +9,7 @@ Copy `.agents/`, `.cursor/`, `.codex/`, `AGENTS.md`, `NOTICE.md` and `.gitignore
 ```
 .agents/
   mcp.json         the one MCP server list
-  skills/          saiyan, task-create, task-execute, task-progress, typescript, commit, bruh, verify-create, verify-example
+  skills/          saiyan, task-create, task-execute, task-progress, python, commit, bruh, verify-create, verify-example
 .cursor/mcp.json   -> ../.agents/mcp.json
 .codex/mcp.json    -> ../.agents/mcp.json
 AGENTS.md          instructions every agent reads

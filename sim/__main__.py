@@ -6,7 +6,7 @@ watch HotStuff stay live with f faults. Automated fault scenarios live in tests/
 
     uv run python -m sim --validators 4 --kill 3
 
-Each file in sim/ is under 1,000 lines too.
+sim/ is not under the 1,000-line limit, but keep it small.
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ import argparse
 
 from sim.bots import Bot  # noqa: F401
 from sim.feed import FakePriceFeed  # noqa: F401
+from sim.net import MemoryNetwork  # noqa: F401
 
 
 def main() -> None:
