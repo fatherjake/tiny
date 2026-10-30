@@ -58,12 +58,13 @@ def test_submit_accepts_and_gossips_once() -> None:
     assert transport.broadcasts == [tx]
 
 
-def test_submit_rejects_bad_sig_and_used_nonce() -> None:
+def test_submit_rejects_bad_sig_and_any_nonce_but_the_next() -> None:
     node, transport = make_node()
     assert not node.submit(replace(cancel(1), sig=bytes(64)))
     assert not node.submit(cancel(0))
     node.state.accounts[cancel(1).signer] = Account("alice", nonce=3)
-    assert not node.submit(cancel(3))
+    assert not node.submit(cancel(3))  # used
+    assert not node.submit(cancel(5))  # gap
     assert node.submit(cancel(4))
     assert len(transport.broadcasts) == 1
 

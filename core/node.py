@@ -168,8 +168,9 @@ class Node:
     def submit(self, tx: Tx) -> bool:
         """Entry point for the API: check it, add it to the mempool, gossip it to the other nodes.
 
-        Returns False for a bad signature, a used nonce, a duplicate or a full mempool. True only
-        means "pending": the tx takes effect, or is rejected, when its block is applied.
+        Returns False for a bad signature, a nonce that is not the next one, a duplicate or a full
+        mempool. True only means "pending": the tx takes effect, or is rejected, when its block is
+        applied.
         """
         if not self.accept(tx):
             return False
@@ -177,8 +178,12 @@ class Node:
         return True
 
     def accept(self, tx: Tx) -> bool:
-        """Cheap checks only, cheapest first. State has the final say on every tx."""
-        if tx.nonce <= self.state.nonce(tx.signer):
+        """Cheap checks only, cheapest first. State has the final say on every tx.
+
+        Only the signer's next nonce is accepted, so a signer has one tx pending at a time and the
+        pool never holds a tx stuck behind a nonce gap.
+        """
+        if tx.nonce != self.state.nonce(tx.signer) + 1:
             return False
         if not verify_tx(tx):
             return False
