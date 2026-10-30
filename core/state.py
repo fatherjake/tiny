@@ -10,6 +10,7 @@ Budget: < 1,000 lines.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable
 from typing import assert_never
 
@@ -20,6 +21,7 @@ from core.types import (
     SIZE_SCALE,
     Account,
     Block,
+    BlockHeader,
     BridgeMessage,
     CancelOrder,
     Deposit,
@@ -355,7 +357,44 @@ class State:
 
     def state_root(self) -> Hash:
         """Hash of canonical state, so validators can compare results."""
-        return sha256(encode(self._canonical()))
+        return sha256(self.to_bytes())
+
+    def to_bytes(self) -> bytes:
+        return encode(self._canonical())
+
+    @classmethod
+    def from_bytes(cls, data: bytes) -> State:
+        """Rebuild the state `to_bytes` wrote. Market params ride along so the copy can trade."""
+        raw = _obj(json.loads(data))
+        markets = [_market(item) for item in _seq(raw["markets"])]
+        state = cls(markets, (_str(item) for item in _seq(raw["validators"])))
+        state.height = _int(raw["height"])
+        state.next_order_id = _int(raw["next_order_id"])
+        state.withdrawal_nonce = _int(raw["withdrawal_nonce"])
+        state.last_funding_ms = _opt_int(raw["last_funding_ms"])
+        state.oracle_voters = {_str(item) for item in _seq(raw["oracle_voters"])}
+        state.accounts = {trader: _account(body) for trader, body in _obj(raw["accounts"]).items()}
+        for name, body in _obj(raw["books"]).items():
+            book = _obj(body)
+            state.books[name].restore(
+                [_order(item) for item in _seq(book["bids"])],
+                [_order(item) for item in _seq(book["asks"])],
+            )
+        state.oracle_prices = {key: _int(val) for key, val in _obj(raw["oracle_prices"]).items()}
+        state.oracle_submissions = {
+            market: [_oracle(item) for item in _seq(items)]
+            for market, items in _obj(raw["oracle_submissions"]).items()
+        }
+        state.mark_prices = {key: _int(val) for key, val in _obj(raw["mark_prices"]).items()}
+        state.funding_index = {key: _int(val) for key, val in _obj(raw["funding_index"]).items()}
+        bridge = _obj(raw["bridge"])
+        state.bridge.oracle_pubkey = _b(bridge["oracle_pubkey"])
+        for item in _seq(bridge["headers"]):
+            header = _header(item)
+            state.bridge.headers[(header.chain_id, header.height)] = header
+        state.bridge.delivered = {_pair(item) for item in _seq(bridge["delivered"])}
+        state.bridge.outbox = [_message(item) for item in _seq(bridge["outbox"])]
+        return state
 
     def _canonical(self) -> dict[str, object]:
         return {
@@ -363,6 +402,7 @@ class State:
             "next_order_id": self.next_order_id,
             "withdrawal_nonce": self.withdrawal_nonce,
             "last_funding_ms": self.last_funding_ms,
+            "markets": [self.markets[name] for name in sorted(self.markets)],
             "validators": sorted(self.validators),
             "oracle_voters": sorted(self.oracle_voters),
             "accounts": {trader: self.accounts[trader] for trader in sorted(self.accounts)},
@@ -381,3 +421,131 @@ class State:
                 "outbox": list(self.bridge.outbox),
             },
         }
+
+
+def _obj(value: object) -> dict[str, object]:
+    if not isinstance(value, dict):
+        raise TypeError("expected object")
+    out: dict[str, object] = {}
+    for key, item in value.items():
+        if not isinstance(key, str):
+            raise TypeError("expected string key")
+        out[key] = item
+    return out
+
+
+def _seq(value: object) -> list[object]:
+    if not isinstance(value, list):
+        raise TypeError("expected list")
+    return list(value)
+
+
+def _str(value: object) -> str:
+    if not isinstance(value, str):
+        raise TypeError("expected string")
+    return value
+
+
+def _int(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError("expected int")
+    return value
+
+
+def _opt_int(value: object) -> int | None:
+    if value is None:
+        return None
+    return _int(value)
+
+
+def _bool(value: object) -> bool:
+    if not isinstance(value, bool):
+        raise TypeError("expected bool")
+    return value
+
+
+def _b(value: object) -> bytes:
+    if not isinstance(value, str):
+        raise TypeError("expected hex")
+    return bytes.fromhex(value)
+
+
+def _pair(value: object) -> tuple[int, int]:
+    row = _seq(value)
+    if len(row) != 2:
+        raise ValueError("expected pair")
+    return _int(row[0]), _int(row[1])
+
+
+def _market(value: object) -> Market:
+    raw = _obj(value)
+    return Market(
+        _str(raw["name"]),
+        _int(raw["tick_size"]),
+        _int(raw["lot_size"]),
+        _int(raw["max_leverage"]),
+        _int(raw["maintenance_margin_bps"]),
+    )
+
+
+def _order(value: object) -> Order:
+    raw = _obj(value)
+    return Order(
+        _int(raw["id"]),
+        _str(raw["trader"]),
+        _str(raw["market"]),
+        Side(_str(raw["side"])),
+        OrderType(_str(raw["type"])),
+        _int(raw["price"]),
+        _int(raw["size"]),
+        _bool(raw["reduce_only"]),
+    )
+
+
+def _position(value: object) -> Position:
+    raw = _obj(value)
+    return Position(
+        _str(raw["market"]),
+        _int(raw["size"]),
+        _int(raw["entry_notional"]),
+        _int(raw["funding_index"]),
+    )
+
+
+def _account(value: object) -> Account:
+    raw = _obj(value)
+    positions = {name: _position(pos) for name, pos in _obj(raw["positions"]).items()}
+    return Account(_str(raw["trader"]), _int(raw["collateral"]), positions, _int(raw["nonce"]))
+
+
+def _sigs(value: object) -> dict[int, bytes]:
+    return {int(key): _b(item) for key, item in _obj(value).items()}
+
+
+def _oracle(value: object) -> OraclePrice:
+    raw = _obj(value)
+    return OraclePrice(
+        _str(raw["market"]), _int(raw["price"]), _int(raw["timestamp_ms"]), _sigs(raw["sigs"])
+    )
+
+
+def _header(value: object) -> BlockHeader:
+    raw = _obj(value)
+    return BlockHeader(
+        _int(raw["chain_id"]),
+        _int(raw["height"]),
+        _b(raw["block_hash"]),
+        _b(raw["receipts_root"]),
+    )
+
+
+def _message(value: object) -> BridgeMessage:
+    raw = _obj(value)
+    return BridgeMessage(
+        _int(raw["src_chain"]),
+        _int(raw["src_height"]),
+        _int(raw["nonce"]),
+        _str(raw["sender"]),
+        _str(raw["recipient"]),
+        _int(raw["amount"]),
+    )

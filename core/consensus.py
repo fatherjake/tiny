@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from dataclasses import replace
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
@@ -75,6 +76,7 @@ class Replica:
         mempool: Callable[[], list[Tx]],
         private_key: bytes,
         pubkeys: dict[NodeId, bytes],
+        state_root_of: Callable[[Block], Hash | None],
     ) -> None:
         self.id = node_id
         self.n = n
@@ -82,6 +84,7 @@ class Replica:
         self.broadcast = broadcast
         self.on_commit = on_commit
         self.mempool = mempool
+        self.state_root_of = state_root_of
         self.private_key = private_key
         self.pubkeys = pubkeys
         self.quorum = quorum_size(n)
@@ -295,7 +298,7 @@ class Replica:
             self.proposed_for = -1
             return
         height = 1 if parent is None else parent.height + 1
-        block = Block(
+        draft = Block(
             self.high_qc.block_hash,
             self.id,
             self.view,
@@ -303,7 +306,13 @@ class Replica:
             tuple(self.mempool()),
             self.now_ms(),
             height,
+            bytes(32),
         )
+        root = self.state_root_of(draft)
+        if root is None:
+            self.proposed_for = -1
+            return
+        block = replace(draft, state_root=root)
         tc = self.carry_tc if self.carry_tc and self.carry_tc.view + 1 == self.view else None
         self.carry_tc = None
         log.info("node %d: propose view %d height %d", self.id, block.view, block.height)
@@ -369,10 +378,22 @@ class Replica:
             return False
         parent = self.blocks.get(block.parent)
         if block.parent == GENESIS:
-            return block.qc.view == 0 and block.height == 1
+            return block.qc.view == 0 and block.height == 1 and self._rooted(block)
         if parent is None:
             return False
-        return parent.view == block.qc.view and block.height == parent.height + 1
+        linked = parent.view == block.qc.view and block.height == parent.height + 1
+        return linked and self._rooted(block)
+
+    def _rooted(self, block: Block) -> bool:
+        if self.state_root_of(block) == block.state_root:
+            return True
+        log.info(
+            "node %d: reject view %d height %d state_root",
+            self.id,
+            block.view,
+            block.height,
+        )
+        return False
 
     def _justifies_jump(self, p: Proposal) -> bool:
         block = p.block
@@ -425,6 +446,8 @@ class Replica:
         for committed in reversed(chain):
             if self.b_exec is not None and committed.hash == self.b_exec.hash:
                 continue
+            if not self._rooted(committed):
+                return
             log.info(
                 "node %d: commit height %d view %d %s",
                 self.id,

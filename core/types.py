@@ -79,6 +79,7 @@ class Block:
     txs: tuple[Tx, ...]
     timestamp_ms: int
     height: int
+    state_root: Hash  # state root after this block is applied
 
     def to_bytes(self) -> bytes:
         return encode(self)
@@ -115,6 +116,27 @@ class NewView:
     view: View
     high_qc: QC
     sender: NodeId
+
+
+@dataclass(frozen=True)
+class SyncRequest:
+    from_height: int
+    limit: int
+
+
+@dataclass(frozen=True)
+class Snapshot:
+    """State after `height`, as canonical bytes from State.to_bytes()."""
+
+    height: int
+    state_bytes: bytes
+
+
+@dataclass(frozen=True)
+class SyncBlocks:
+    """Contiguous blocks, each carrying the QC that justifies its parent."""
+
+    blocks: tuple[Block, ...]
 
 
 # ---------------------------------------------------------------- exchange

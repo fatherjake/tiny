@@ -86,6 +86,13 @@ class OrderBook:
             self._rest(replace(order, size=remaining))
         return fills
 
+    def restore(self, bids: list[Order], asks: list[Order]) -> None:
+        """Put resting orders back without matching. Lists are best price first, then time."""
+        for order in bids:
+            self._rest(order)
+        for order in asks:
+            self._rest(order)
+
     def cancel(self, order_id: int) -> Order | None:
         order = self.orders.get(order_id)
         if order is None:

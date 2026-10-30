@@ -9,6 +9,8 @@ from core.types import (
     USDC_SCALE,
     Account,
     Block,
+    BlockHeader,
+    BridgeMessage,
     CancelOrder,
     Market,
     OraclePrice,
@@ -30,7 +32,7 @@ OTHER = bytes(range(1, 33))
 
 
 def block(height: int, *txs: Tx, timestamp_ms: int = 0) -> Block:
-    return Block(bytes(32), 0, height, QC(0, bytes(32), {}), txs, timestamp_ms, height)
+    return Block(bytes(32), 0, height, QC(0, bytes(32), {}), txs, timestamp_ms, height, bytes(32))
 
 
 def oracle(nonce: int, key: bytes = VALIDATOR, price: int = 100, market: str = "BTC-PERP") -> Tx:
@@ -358,6 +360,7 @@ def test_state_root_hashes_the_canonical_state() -> None:
                 "next_order_id": 1,
                 "withdrawal_nonce": 0,
                 "last_funding_ms": None,
+                "markets": [MARKET],
                 "validators": [],
                 "oracle_voters": [],
                 "accounts": {},
@@ -428,3 +431,23 @@ def test_state_root_ignores_insertion_order_and_changes_with_state() -> None:
     assert same_a.state_root() == same_b.state_root()
     same_b.apply_block(block(2, timestamp_ms=2_000))
     assert same_a.state_root() != same_b.state_root()
+
+
+def test_from_bytes_restores_the_state_root() -> None:
+    state = State([MARKET], validators={public_key(VALIDATOR).hex()})
+    alice = fund(state, ALICE, 1_000 * USDC_SCALE)
+    state.accounts[alice].positions["BTC-PERP"] = Position("BTC-PERP", size=ONE, entry_notional=5)
+    state.apply_block(block(1, place(ALICE, 1, 7, Side.BUY, PX, ONE), timestamp_ms=1_000))
+    state.bridge.oracle_pubkey = b"oracle"
+    state.bridge.headers[(1, 2)] = BlockHeader(1, 2, b"\x11" * 32, b"\x22" * 32)
+    state.bridge.delivered.add((1, 4))
+    state.bridge.outbox.append(BridgeMessage(1, 2, 3, "alice", "bob", 5))
+    restored = State.from_bytes(state.to_bytes())
+    assert restored.state_root() == state.state_root()
+    assert restored.height == 1
+    assert restored.accounts[alice].collateral == 1_000 * USDC_SCALE
+    assert restored.accounts[alice].positions["BTC-PERP"].size == ONE
+    assert restored.books["BTC-PERP"].best_bid() == PX
+    assert restored.bridge.oracle_pubkey == b"oracle"
+    assert restored.bridge.delivered == {(1, 4)}
+    assert restored.markets["BTC-PERP"] == MARKET

@@ -14,7 +14,7 @@ def cancel(nonce: int, key: bytes = KEY_A) -> Tx:
 
 
 def block_of(*txs: Tx) -> Block:
-    return Block(bytes(32), 0, 1, QC(0, bytes(32), {}), txs, 0, 1)
+    return Block(bytes(32), 0, 1, QC(0, bytes(32), {}), txs, 0, 1, bytes(32))
 
 
 class FakeTransport:
