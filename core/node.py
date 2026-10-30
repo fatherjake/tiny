@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+from collections import deque
 from collections.abc import Callable
 from dataclasses import replace
 
@@ -209,6 +210,8 @@ class Node:
         self._sync_tries = 0
         self._rr = 0
         self._oracle_i = 0
+        self.trade_seq = 0
+        self.trades: deque[dict[str, object]] = deque(maxlen=20_000)
         pubs = dict(validator_pubkeys)
         pubs[node_id] = public_key(private_key)
         self.replica = Replica(
@@ -292,6 +295,19 @@ class Node:
         if block.height <= self.state.height:
             return
         self.state.apply_block(block)
+        for fill in self.state.block_fills:
+            self.trade_seq += 1
+            self.trades.append(
+                {
+                    "seq": self.trade_seq,
+                    "height": block.height,
+                    "timestamp_ms": block.timestamp_ms,
+                    "market": fill.market,
+                    "side": fill.taker_side.value,
+                    "price": fill.price,
+                    "size": fill.size,
+                }
+            )
         self.mempool.remove_committed(block, self.state.nonce)
         self.committed.append(block)
         self.by_height[block.height] = block

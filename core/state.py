@@ -76,6 +76,7 @@ class State:
         self.next_order_id = 1
         self.bridge = Bridge()
         self.withdrawal_nonce = 0
+        self.block_fills: list[Fill] = []
 
     def nonce(self, trader: str) -> int:
         """Last committed nonce; 0 for an account that has never sent a tx."""
@@ -85,6 +86,7 @@ class State:
     def apply_block(self, block: Block) -> None:
         """Apply every tx, then end-of-block work: oracle median, marks, funding, liquidations."""
         assert block.height == self.height + 1, "block height must be the next height"
+        self.block_fills = []
         for tx in block.txs:
             self.apply_tx(tx, block.timestamp_ms)
         self.update_oracle_prices()
@@ -193,6 +195,7 @@ class State:
         )
 
     def settle_fill(self, fill: Fill) -> None:
+        self.block_fills.append(fill)
         maker_side = Side.SELL if fill.taker_side == Side.BUY else Side.BUY
         self._apply_fill(fill.maker, fill.market, maker_side, fill.price, fill.size, MAKER_FEE_BPS)
         self._apply_fill(

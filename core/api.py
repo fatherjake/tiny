@@ -1,7 +1,7 @@
 """HTTP + WebSocket API in front of one validator.
 
-REST: POST /tx, GET /book/{market}, GET /account/{trader}, GET /markets, GET /status.
-WS:   /ws streams new committed blocks and book depth.
+REST: POST /tx, GET /book/{market}, GET /account/{trader}, GET /markets, GET /trades, GET /status.
+WS:   /ws streams new committed blocks, book depth, and trades.
 Serves ui.html at /.
 
 JSON is untrusted. Pydantic decodes it straight into the dataclasses in core.types (strict: no
@@ -128,11 +128,17 @@ def create_app(node: Node) -> FastAPI:
             "state_root": node.state.state_root().hex(),
         }
 
+    @app.get("/trades")
+    def trades(market: str = "", limit: int = 40) -> list[dict[str, object]]:
+        rows = [row for row in node.trades if not market or row["market"] == market]
+        return list(reversed(rows[-limit:]))
+
     @app.websocket("/ws")
     async def stream(socket: WebSocket) -> None:
-        """Push new blocks as they commit, then each market's depth when the height moves."""
+        """Push new blocks as they commit, then each market's depth and any trades."""
         await socket.accept()
         seen = len(node.committed)
+        seen_trade = node.trade_seq
         try:
             while True:
                 fresh = node.committed[seen:]
@@ -142,8 +148,12 @@ def create_app(node: Node) -> FastAPI:
                     )
                 if fresh:
                     seen += len(fresh)
-                    for market in sorted(node.state.books):
-                        await socket.send_json({"type": "book", **book_json(node, market, 20)})
+                    for name in sorted(node.state.books):
+                        await socket.send_json({"type": "book", **book_json(node, name, 20)})
+                fresh_trades = [row for row in node.trades if int(row["seq"]) > seen_trade]
+                for row in fresh_trades:
+                    await socket.send_json({"type": "trade", **row})
+                    seen_trade = int(row["seq"])
                 await asyncio.sleep(WS_INTERVAL_S)
         except WebSocketDisconnect:
             return
