@@ -9,7 +9,7 @@ def test_every_file_under_limit():
 
 
 def test_quorum_math():
-    from tiny.consensus import num_faulty, quorum_size
+    from core.consensus import num_faulty, quorum_size
 
     assert [num_faulty(n) for n in (4, 7, 10)] == [1, 2, 3]
     assert [quorum_size(n) for n in (4, 7, 10)] == [3, 5, 7]

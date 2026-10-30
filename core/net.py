@@ -13,7 +13,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Protocol
 
-from tiny.types import NodeId
+from core.types import NodeId
 
 Handler = Callable[[NodeId, object], None]  # (sender, message)
 

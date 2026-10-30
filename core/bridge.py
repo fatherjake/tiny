@@ -13,7 +13,7 @@ Budget: < 1,000 lines.
 
 from __future__ import annotations
 
-from tiny.types import BlockHeader, BridgeMessage, Hash, MessageProof
+from core.types import BlockHeader, BridgeMessage, Hash, MessageProof
 
 
 def merkle_root(leaves: list[Hash]) -> Hash:

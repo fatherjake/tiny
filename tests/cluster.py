@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from tiny.net import MemoryNetwork
-from tiny.node import Node
+from core.net import MemoryNetwork
+from core.node import Node
 
 
 class Cluster:

@@ -4,36 +4,17 @@ Starts n Nodes on a MemoryNetwork, a fake price feed, a few trading bots, a fake
 the bridge oracle and relayer, and the API + UI on node 0. Kill or partition nodes from the CLI to
 watch HotStuff stay live with f faults. Automated fault scenarios live in tests/.
 
-    uv run python -m tiny.sim --validators 4 --kill 3
+    uv run python -m sim --validators 4 --kill 3
 
-Budget: < 1,000 lines (aim for ~100-200).
+Each file in sim/ is under 1,000 lines too.
 """
 
 from __future__ import annotations
 
 import argparse
 
-
-class FakePriceFeed:
-    """Random-walk prices per market, seeded so runs are reproducible."""
-
-    def __init__(self, start_prices: dict[str, int], seed: int = 0) -> None:
-        self.prices = dict(start_prices)
-        self.seed = seed
-
-    def tick(self) -> dict[str, int]:
-        raise NotImplementedError
-
-
-class Bot:
-    """Places random limit and market orders around the mid."""
-
-    def __init__(self, trader: str, seed: int = 0) -> None:
-        self.trader = trader
-        self.seed = seed
-
-    def step(self) -> None:
-        raise NotImplementedError
+from sim.bots import Bot  # noqa: F401
+from sim.feed import FakePriceFeed  # noqa: F401
 
 
 def main() -> None:

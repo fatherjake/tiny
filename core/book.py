@@ -8,7 +8,7 @@ Budget: < 1,000 lines.
 
 from __future__ import annotations
 
-from tiny.types import Fill, Order
+from core.types import Fill, Order
 
 
 class OrderBook:

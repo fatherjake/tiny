@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from tiny.types import QC, TC, Block, Hash, NewView, NodeId, Proposal, Timeout, Tx, View, Vote
+from core.types import QC, TC, Block, Hash, NewView, NodeId, Proposal, Timeout, Tx, View, Vote
 
 
 def num_faulty(n: int) -> int:

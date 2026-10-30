@@ -1,13 +1,13 @@
 # tiny
 
-A teaching-sized Hyperliquid in Python for Jacob to learn HotStuff and perp DEX internals. One file per component in `tiny/`, and every file must stay under 1,000 lines (enforced by `scripts/check_loc.py`). Keep `types.py` data-only so it can't be used to dodge the limit.
+A teaching-sized Hyperliquid in Python for Jacob to learn HotStuff and perp DEX internals. Chain components are one file each in `core/`, the playground is in `sim/`, and every file must stay under 1,000 lines (enforced by `scripts/check_loc.py`). Keep `types.py` data-only so it can't be used to dodge the limit.
 
 ## Commands
 
 Fill these in. Agents run them without asking.
 
 - Install: `uv sync`
-- Run locally: `uv run python -m tiny.sim --validators 4`
+- Run locally: `uv run python -m sim --validators 4`
 - Test: `uv run pytest`
 - Lint, format, and line limit: `uv run ruff check . && uv run ruff format --check . && uv run python scripts/check_loc.py`
 

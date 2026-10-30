@@ -10,9 +10,9 @@ Budget: < 1,000 lines.
 
 from __future__ import annotations
 
-from tiny.book import OrderBook
-from tiny.bridge import Bridge
-from tiny.types import Account, Block, Fill, Market, OraclePrice, Tx
+from core.book import OrderBook
+from core.bridge import Bridge
+from core.types import Account, Block, Fill, Market, OraclePrice, Tx
 
 
 def median_price(submissions: list[OraclePrice]) -> int:

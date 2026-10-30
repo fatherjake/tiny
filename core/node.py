@@ -9,7 +9,7 @@
 
 Run one validator per process over TCP:
 
-    uv run python -m tiny.node --id 0 --config cluster.json
+    uv run python -m core.node --id 0 --config cluster.json
 
 Budget: < 1,000 lines.
 """
@@ -19,10 +19,10 @@ from __future__ import annotations
 import argparse
 from collections.abc import Callable
 
-from tiny.consensus import Replica
-from tiny.net import Transport
-from tiny.state import State
-from tiny.types import Block, Market, NodeId, Tx
+from core.consensus import Replica
+from core.net import Transport
+from core.state import State
+from core.types import Block, Market, NodeId, Tx
 
 
 class Mempool:
