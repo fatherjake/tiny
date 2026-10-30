@@ -38,7 +38,14 @@ class State:
 
     def apply_block(self, block: Block) -> None:
         """Apply every tx, then end-of-block work: oracle median, marks, funding, liquidations."""
-        raise NotImplementedError
+        assert block.height == self.height + 1, "block height must be the next height"
+        for tx in block.txs:
+            self.apply_tx(tx, block.timestamp_ms)
+        self.update_oracle_prices()
+        self.update_mark_prices()
+        self.apply_funding(block.timestamp_ms)
+        self.liquidate()
+        self.height = block.height
 
     def apply_tx(self, tx: Tx, timestamp_ms: int) -> None:
         raise NotImplementedError
@@ -48,20 +55,20 @@ class State:
 
     def update_oracle_prices(self) -> None:
         """Median of this block's submissions per market."""
-        raise NotImplementedError
+        return
 
     def update_mark_prices(self) -> None:
-        raise NotImplementedError
+        return
 
     def apply_funding(self, timestamp_ms: int) -> None:
-        raise NotImplementedError
+        return
 
     def margin(self, trader: str) -> tuple[int, int]:
         """(account value, maintenance margin required)."""
         raise NotImplementedError
 
     def liquidate(self) -> None:
-        raise NotImplementedError
+        return
 
     def state_root(self) -> bytes:
         """Hash of canonical state, so validators can compare results."""

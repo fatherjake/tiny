@@ -78,6 +78,7 @@ class Block:
     qc: QC  # justifies the parent
     txs: tuple[Tx, ...]
     timestamp_ms: int
+    height: int
 
     def to_bytes(self) -> bytes:
         return encode(self)
