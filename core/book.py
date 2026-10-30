@@ -121,6 +121,13 @@ class OrderBook:
             "asks": self._depth(self.ask_prices, self.asks, levels, high_first=False),
         }
 
+    def resting(self) -> dict[str, list[Order]]:
+        """Resting orders, best price first and then time order."""
+        return {
+            "bids": self._orders(self.bid_prices, self.bids, high_first=True),
+            "asks": self._orders(self.ask_prices, self.asks, high_first=False),
+        }
+
     def _cap(self, order: Order, position_of: Callable[[str], int] | None) -> int:
         position = 0 if position_of is None else position_of(order.trader)
         return reducible(position, order.side)
@@ -173,3 +180,13 @@ class OrderBook:
                 break
             out.append((price, sum(resting.size for resting in queues[price])))
         return out
+
+    def _orders(
+        self,
+        prices: list[int],
+        queues: dict[int, deque[Order]],
+        *,
+        high_first: bool,
+    ) -> list[Order]:
+        ordered = list(reversed(prices)) if high_first else prices
+        return [resting for price in ordered for resting in queues[price]]

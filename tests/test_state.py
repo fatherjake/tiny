@@ -20,6 +20,8 @@ from core.types import (
     Side,
     Tx,
     Withdraw,
+    encode,
+    sha256,
 )
 
 MARKET = Market("BTC-PERP", tick_size=1, lot_size=1, max_leverage=10, maintenance_margin_bps=300)
@@ -345,3 +347,84 @@ def test_funding_pays_the_premium_for_elapsed_block_time() -> None:
     assert (
         state.accounts[bob].positions["BTC-PERP"].funding_index == state.funding_index["BTC-PERP"]
     )
+
+
+def test_state_root_hashes_the_canonical_state() -> None:
+    state = State([MARKET])
+    assert state.state_root() == sha256(
+        encode(
+            {
+                "height": 0,
+                "next_order_id": 1,
+                "withdrawal_nonce": 0,
+                "last_funding_ms": None,
+                "validators": [],
+                "oracle_voters": [],
+                "accounts": {},
+                "books": {"BTC-PERP": {"bids": [], "asks": []}},
+                "oracle_prices": {},
+                "oracle_submissions": {},
+                "mark_prices": {},
+                "funding_index": {"BTC-PERP": 0},
+                "bridge": {
+                    "oracle_pubkey": b"",
+                    "headers": [],
+                    "delivered": [],
+                    "outbox": [],
+                },
+            }
+        )
+    )
+
+
+def test_state_root_ignores_insertion_order_and_changes_with_state() -> None:
+    left = State([MARKET])
+    right = State([MARKET])
+    left.accounts["bob"] = Account(
+        "bob",
+        collateral=1,
+        positions={
+            "ETH-PERP": Position("ETH-PERP"),
+            "BTC-PERP": Position("BTC-PERP", size=1),
+        },
+    )
+    left.accounts["alice"] = Account("alice", collateral=2)
+    right.accounts["alice"] = Account("alice", collateral=2)
+    right.accounts["bob"] = Account(
+        "bob",
+        collateral=1,
+        positions={
+            "BTC-PERP": Position("BTC-PERP", size=1),
+            "ETH-PERP": Position("ETH-PERP"),
+        },
+    )
+    left.bridge.delivered.add((2, 1))
+    left.bridge.delivered.add((1, 9))
+    right.bridge.delivered.add((1, 9))
+    right.bridge.delivered.add((2, 1))
+    assert left.state_root() == right.state_root()
+
+    left.apply_tx(place(ALICE, 1, 1, Side.BUY, 100, ONE), 0)
+    left.apply_tx(place(ALICE, 2, 2, Side.BUY, 100, ONE), 0)
+    right.apply_tx(place(ALICE, 1, 2, Side.BUY, 100, ONE), 0)
+    right.apply_tx(place(ALICE, 2, 1, Side.BUY, 100, ONE), 0)
+    assert left.state_root() != right.state_root()
+
+    same_a = State([MARKET], validators={public_key(VALIDATOR).hex()})
+    same_b = State([MARKET], validators={public_key(VALIDATOR).hex()})
+    fund(same_a, ALICE, 1_000 * USDC_SCALE)
+    fund(same_a, BOB, 1_000 * USDC_SCALE)
+    fund(same_b, BOB, 1_000 * USDC_SCALE)
+    fund(same_b, ALICE, 1_000 * USDC_SCALE)
+    trades = block(
+        1,
+        place(ALICE, 1, 1, Side.SELL, PX, ONE),
+        place(BOB, 1, 2, Side.BUY, 0, ONE, OrderType.MARKET),
+        oracle(1, price=PX),
+        timestamp_ms=1_000,
+    )
+    same_a.apply_block(trades)
+    same_b.apply_block(trades)
+    assert same_a.state_root() == same_b.state_root()
+    same_b.apply_block(block(2, timestamp_ms=2_000))
+    assert same_a.state_root() != same_b.state_root()

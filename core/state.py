@@ -24,6 +24,7 @@ from core.types import (
     CancelOrder,
     Deposit,
     Fill,
+    Hash,
     Market,
     MessageProof,
     OraclePrice,
@@ -36,6 +37,8 @@ from core.types import (
     Side,
     Tx,
     Withdraw,
+    encode,
+    sha256,
 )
 
 MAKER_FEE_BPS = 2
@@ -350,6 +353,31 @@ class State:
         self.next_order_id += 1
         return order_id
 
-    def state_root(self) -> bytes:
+    def state_root(self) -> Hash:
         """Hash of canonical state, so validators can compare results."""
-        raise NotImplementedError
+        return sha256(encode(self._canonical()))
+
+    def _canonical(self) -> dict[str, object]:
+        return {
+            "height": self.height,
+            "next_order_id": self.next_order_id,
+            "withdrawal_nonce": self.withdrawal_nonce,
+            "last_funding_ms": self.last_funding_ms,
+            "validators": sorted(self.validators),
+            "oracle_voters": sorted(self.oracle_voters),
+            "accounts": {trader: self.accounts[trader] for trader in sorted(self.accounts)},
+            "books": {name: self.books[name].resting() for name in sorted(self.books)},
+            "oracle_prices": dict(sorted(self.oracle_prices.items())),
+            "oracle_submissions": {
+                market: self.oracle_submissions[market]
+                for market in sorted(self.oracle_submissions)
+            },
+            "mark_prices": dict(sorted(self.mark_prices.items())),
+            "funding_index": dict(sorted(self.funding_index.items())),
+            "bridge": {
+                "oracle_pubkey": self.bridge.oracle_pubkey,
+                "headers": [self.bridge.headers[key] for key in sorted(self.bridge.headers)],
+                "delivered": sorted(self.bridge.delivered),
+                "outbox": list(self.bridge.outbox),
+            },
+        }
