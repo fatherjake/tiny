@@ -1,0 +1,20 @@
+[project]
+name = "tiny"
+version = "0.1.0"
+description = "A teaching-sized Hyperliquid: HotStuff validators, a perp DEX, a bridge, an API and a UI. One file per component, each under 1,000 lines."
+requires-python = ">=3.12"
+dependencies = [
+  "cryptography>=43",
+  "fastapi>=0.115",
+  "uvicorn>=0.32",
+]
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.7"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
