@@ -1,7 +1,7 @@
 import pytest
 
 from core.node import public_key, sign_tx
-from core.state import State
+from core.state import HOUR_MS, State, median_price
 from core.types import (
     PRICE_SCALE,
     QC,
@@ -235,3 +235,60 @@ def test_off_tick_or_off_lot_orders_do_not_reach_the_book() -> None:
     state.apply_tx(sign_tx(OTHER, PlaceOrder(off_tick), 1), 0)
     state.apply_tx(sign_tx(OTHER, PlaceOrder(off_lot), 2), 0)
     assert state.books["BTC-PERP"].orders == {}
+
+
+def test_median_price_picks_the_middle_and_averages_an_even_count() -> None:
+    def price(value: int) -> OraclePrice:
+        return OraclePrice("BTC-PERP", value, 0, {})
+
+    assert median_price([price(10), price(30), price(20)]) == 20
+    assert median_price([price(value) for value in (10, 40, 20, 30)]) == 25
+
+
+def test_mark_follows_the_oracle_inside_the_spread() -> None:
+    validator = public_key(VALIDATOR).hex()
+    state = State([MARKET], validators={validator})
+    bid = place(ALICE, 1, 1, Side.BUY, 100, ONE)
+    ask = place(BOB, 1, 2, Side.SELL, 110, ONE)
+    state.apply_block(block(1, bid, ask, timestamp_ms=1_000))
+    assert state.mark_prices["BTC-PERP"] == 105
+    state.apply_block(block(2, oracle(1, price=120), timestamp_ms=2_000))
+    assert state.oracle_prices["BTC-PERP"] == 120
+    assert state.mark_prices["BTC-PERP"] == 110
+    state.apply_block(block(3, oracle(2, price=105), timestamp_ms=3_000))
+    assert state.mark_prices["BTC-PERP"] == 105
+
+
+def test_funding_pays_the_premium_for_elapsed_block_time() -> None:
+    keys = [VALIDATOR, OTHER, bytes(range(2, 34))]
+    state = State([MARKET], validators={public_key(key).hex() for key in keys})
+    alice = fund(state, ALICE, 10_000 * USDC_SCALE)
+    bob = fund(state, BOB, 10_000 * USDC_SCALE)
+    votes = [
+        oracle(1, key=key, price=(49_000 + i * 1_000) * PRICE_SCALE) for i, key in enumerate(keys)
+    ]
+    opened = block(
+        1,
+        place(ALICE, 1, 1, Side.SELL, PX, ONE),
+        place(BOB, 1, 2, Side.BUY, 0, ONE, OrderType.MARKET),
+        place(ALICE, 2, 3, Side.BUY, 51_000 * PRICE_SCALE, ONE),
+        place(BOB, 2, 4, Side.SELL, 52_000 * PRICE_SCALE, ONE),
+        *votes,
+        timestamp_ms=1_000,
+    )
+    state.apply_block(opened)
+    assert state.oracle_prices["BTC-PERP"] == 50_000 * PRICE_SCALE
+    assert state.mark_prices["BTC-PERP"] == 51_000 * PRICE_SCALE
+    assert state.accounts[alice].collateral == 9_990 * USDC_SCALE
+    assert state.accounts[bob].collateral == 9_975 * USDC_SCALE
+    state.apply_block(block(2, timestamp_ms=1_000 + HOUR_MS))
+    assert state.accounts[bob].collateral == 8_975 * USDC_SCALE
+    assert state.accounts[alice].collateral == 10_990 * USDC_SCALE
+    state.apply_block(block(3, timestamp_ms=500))
+    assert state.accounts[bob].collateral == 8_975 * USDC_SCALE
+    state.apply_block(block(4, timestamp_ms=1_000 + HOUR_MS + HOUR_MS // 2))
+    assert state.accounts[bob].collateral == 8_475 * USDC_SCALE
+    assert state.accounts[alice].collateral == 11_490 * USDC_SCALE
+    assert (
+        state.accounts[bob].positions["BTC-PERP"].funding_index == state.funding_index["BTC-PERP"]
+    )

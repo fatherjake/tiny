@@ -17,6 +17,7 @@ from core.book import OrderBook
 from core.bridge import Bridge
 from core.types import (
     PRICE_SCALE,
+    SIZE_SCALE,
     Account,
     Block,
     BridgeMessage,
@@ -39,10 +40,19 @@ from core.types import (
 
 MAKER_FEE_BPS = 2
 TAKER_FEE_BPS = 5
+HOUR_MS = 3_600_000
+
+
+def median(values: list[int]) -> int:
+    ordered = sorted(values)
+    mid = len(ordered) // 2
+    if len(ordered) % 2 == 1:
+        return ordered[mid]
+    return (ordered[mid - 1] + ordered[mid]) // 2
 
 
 def median_price(submissions: list[OraclePrice]) -> int:
-    raise NotImplementedError
+    return median([item.price for item in submissions])
 
 
 class State:
@@ -57,6 +67,7 @@ class State:
         self.oracle_voters: set[str] = set()
         self.mark_prices: dict[str, int] = {}
         self.funding_index: dict[str, int] = {m.name: 0 for m in markets}
+        self.last_funding_ms: int | None = None
         self.bridge = Bridge()
         self.withdrawal_nonce = 0
 
@@ -190,6 +201,7 @@ class State:
         if pos is None:
             pos = Position(market, funding_index=self.funding_index[market])
             account.positions[market] = pos
+        self._collect_funding(account, market)
         notional = price * size // PRICE_SCALE
         account.collateral -= notional * fee_bps // 10_000
         signed = size if side == Side.BUY else -size
@@ -219,14 +231,57 @@ class State:
         )
 
     def update_oracle_prices(self) -> None:
-        """Median of this block's submissions per market."""
-        return
+        """Median of this block's submissions per market. No vote keeps the previous price."""
+        for market in sorted(self.oracle_submissions):
+            if self.oracle_submissions[market]:
+                self.oracle_prices[market] = median_price(self.oracle_submissions[market])
 
     def update_mark_prices(self) -> None:
-        return
+        """Median of bid, ask and oracle. A one-sided book leaves the mark at the oracle."""
+        for market in sorted(self.markets):
+            book = self.books[market]
+            oracle = self.oracle_prices.get(market)
+            bid, ask, mid = book.best_bid(), book.best_ask(), book.mid()
+            if bid is not None and ask is not None and oracle is not None:
+                self.mark_prices[market] = median([bid, ask, oracle])
+            elif oracle is not None:
+                self.mark_prices[market] = oracle
+            elif mid is not None:
+                self.mark_prices[market] = mid
 
     def apply_funding(self, timestamp_ms: int) -> None:
-        return
+        """Longs pay the mark-oracle premium for the time since the previous block.
+
+        Over one hour the payment on one unit is exactly `mark - oracle`. The first block
+        only starts the clock, and a timestamp that does not move forward is ignored.
+        """
+        if self.last_funding_ms is None:
+            self.last_funding_ms = timestamp_ms
+            return
+        elapsed = timestamp_ms - self.last_funding_ms
+        if elapsed <= 0:
+            return
+        self.last_funding_ms = timestamp_ms
+        for market in sorted(self.markets):
+            oracle = self.oracle_prices.get(market)
+            mark = self.mark_prices.get(market)
+            if oracle is None or mark is None:
+                continue
+            self.funding_index[market] += (mark - oracle) * elapsed // HOUR_MS
+        for trader in sorted(self.accounts):
+            account = self.accounts[trader]
+            for market in sorted(account.positions):
+                self._collect_funding(account, market)
+
+    def _collect_funding(self, account: Account, market: str) -> None:
+        pos = account.positions.get(market)
+        if pos is None:
+            return
+        delta = self.funding_index[market] - pos.funding_index
+        pos.funding_index = self.funding_index[market]
+        if delta == 0 or pos.size == 0:
+            return
+        account.collateral -= pos.size * delta // SIZE_SCALE
 
     def margin(self, trader: str) -> tuple[int, int]:
         """(account value, maintenance margin required), both at mark prices."""
