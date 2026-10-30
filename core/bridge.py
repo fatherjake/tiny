@@ -3,10 +3,9 @@ relayer posts Merkle proofs of messages against them. A message is accepted only
 checks out against a header the oracle posted, so the oracle and relayer have to collude to forge
 a deposit.
 
-On-chain side (called from state.py): store headers, verify proofs, dedupe nonces, credit
-deposits, queue withdrawals.
-Off-chain side (run by sim.py): a fake source chain, an Oracle that posts its headers and a
-Relayer that posts proofs.
+This file is the on-chain side only (called from state.py): store headers, verify proofs, dedupe
+nonces, credit deposits, queue withdrawals. The off-chain source chain, oracle and relayer live in
+sim/bridge.py.
 
 Budget: < 1,000 lines.
 """
@@ -45,33 +44,4 @@ class Bridge:
         raise NotImplementedError
 
     def queue_withdrawal(self, msg: BridgeMessage) -> None:
-        raise NotImplementedError
-
-
-class FakeSourceChain:
-    """A toy source chain that produces blocks of deposit messages."""
-
-    def __init__(self, chain_id: int) -> None:
-        self.chain_id = chain_id
-        self.height = 0
-        self.blocks: list[tuple[BlockHeader, list[BridgeMessage]]] = []
-
-    def deposit(self, sender: str, recipient: str, amount: int) -> BridgeMessage:
-        raise NotImplementedError
-
-    def mine(self) -> BlockHeader:
-        raise NotImplementedError
-
-
-class Oracle:
-    """Watches the source chain and submits PostHeader txs."""
-
-    def poll(self, chain: FakeSourceChain) -> list[BlockHeader]:
-        raise NotImplementedError
-
-
-class Relayer:
-    """Watches the source chain and submits Deposit txs carrying Merkle proofs."""
-
-    def poll(self, chain: FakeSourceChain) -> list[MessageProof]:
         raise NotImplementedError

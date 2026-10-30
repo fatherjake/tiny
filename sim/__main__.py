@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 
 from sim.bots import Bot  # noqa: F401
+from sim.bridge import FakeSourceChain, Oracle, Relayer  # noqa: F401
 from sim.feed import FakePriceFeed  # noqa: F401
 from sim.net import MemoryNetwork  # noqa: F401
 
