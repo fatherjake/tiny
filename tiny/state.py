@@ -1,6 +1,8 @@
 """The deterministic state machine, applied block by block to committed blocks.
 
 Owns accounts, positions, order books, oracle prices, funding, liquidations and bridge credits.
+Oracle prices arrive as SetOraclePrice txs from validators; the median per market becomes the
+oracle price for that block.
 Rules: integers only, no wall clock (use block timestamps), no randomness, no I/O.
 
 Budget: < 1,000 lines.
@@ -10,7 +12,11 @@ from __future__ import annotations
 
 from tiny.book import OrderBook
 from tiny.bridge import Bridge
-from tiny.types import Account, Block, Fill, Market, Tx
+from tiny.types import Account, Block, Fill, Market, OraclePrice, Tx
+
+
+def median_price(submissions: list[OraclePrice]) -> int:
+    raise NotImplementedError
 
 
 class State:
@@ -20,18 +26,23 @@ class State:
         self.books = {m.name: OrderBook(m.name) for m in markets}
         self.accounts: dict[str, Account] = {}
         self.oracle_prices: dict[str, int] = {}
+        self.oracle_submissions: dict[str, list[OraclePrice]] = {}  # this block's, cleared after
         self.mark_prices: dict[str, int] = {}
         self.funding_index: dict[str, int] = {m.name: 0 for m in markets}
         self.bridge = Bridge()
 
     def apply_block(self, block: Block) -> None:
-        """Apply every tx, then end-of-block work: marks, funding, liquidations."""
+        """Apply every tx, then end-of-block work: oracle median, marks, funding, liquidations."""
         raise NotImplementedError
 
     def apply_tx(self, tx: Tx, timestamp_ms: int) -> None:
         raise NotImplementedError
 
     def settle_fill(self, fill: Fill) -> None:
+        raise NotImplementedError
+
+    def update_oracle_prices(self) -> None:
+        """Median of this block's submissions per market."""
         raise NotImplementedError
 
     def update_mark_prices(self) -> None:

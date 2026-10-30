@@ -6,13 +6,12 @@ A teaching-sized Hyperliquid in Python. Each component is one file, and no file 
 | --- | --- |
 | `tiny/types.py` | Shared data types only, no logic |
 | `tiny/consensus.py` | Chained HotStuff validators and pacemaker |
-| `tiny/state.py` | Deterministic state machine: accounts, positions, funding, liquidations |
+| `tiny/state.py` | Deterministic state machine: accounts, positions, oracle prices, funding, liquidations |
 | `tiny/book.py` | Price-time priority order book |
-| `tiny/oracle.py` | Price oracle submissions and median |
 | `tiny/bridge.py` | LayerZero v1 style bridge: oracle posts headers, relayer posts Merkle proofs |
 | `tiny/api.py` | REST and WebSocket API |
 | `tiny/ui.html` | Single-page trading UI |
-| `tiny/sim.py` | Runs a cluster with bots, faults and the API |
+| `tiny/sim.py` | Runs a cluster with bots, a fake price feed, faults and the API |
 
 Consensus only orders transactions. Every validator applies committed blocks to `State` and must get the same result, so the state machine uses integers only, block timestamps instead of the clock, and no randomness.
 

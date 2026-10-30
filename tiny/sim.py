@@ -1,5 +1,5 @@
 """Runs the whole thing: n validators on an in-memory network with configurable delay and drops,
-trading bots, the oracle feed, a fake source chain with bridge oracle and relayer, and the API on
+trading bots, a fake price feed that each validator submits as SetOraclePrice txs, a fake source chain with bridge oracle and relayer, and the API on
 validator 0. Can kill or partition validators to show HotStuff staying live with f faults.
 
     uv run python -m tiny.sim --validators 4 --kill 3
@@ -10,6 +10,17 @@ Budget: < 1,000 lines.
 from __future__ import annotations
 
 import argparse
+
+
+class FakePriceFeed:
+    """Random-walk prices per market, seeded so runs are reproducible."""
+
+    def __init__(self, start_prices: dict[str, int], seed: int = 0) -> None:
+        self.prices = dict(start_prices)
+        self.seed = seed
+
+    def tick(self) -> dict[str, int]:
+        raise NotImplementedError
 
 
 class Network:
