@@ -224,6 +224,59 @@ def test_withdraw_keeps_collateral_that_maintenance_still_needs() -> None:
     assert state.nonce(alice) == 1
 
 
+def long_at(name: str, collateral: int, entry: int, size: int = ONE) -> Account:
+    return Account(
+        name,
+        collateral=collateral,
+        positions={"BTC-PERP": Position("BTC-PERP", size=size, entry_notional=entry)},
+    )
+
+
+def test_liquidation_closes_underwater_accounts_in_trader_order() -> None:
+    state = State([MARKET])
+    state.oracle_prices["BTC-PERP"] = 10_000 * PRICE_SCALE
+    state.accounts["bob"] = long_at("bob", 1_000 * USDC_SCALE, 50_000 * USDC_SCALE)
+    state.accounts["alice"] = long_at("alice", 1_000 * USDC_SCALE, 50_000 * USDC_SCALE)
+    state.books["BTC-PERP"].place(
+        Order(1, "carol", "BTC-PERP", Side.BUY, OrderType.LIMIT, 10_000 * PRICE_SCALE, ONE)
+    )
+    state.apply_block(block(1, timestamp_ms=1_000))
+    assert "BTC-PERP" not in state.accounts["alice"].positions
+    assert state.accounts["alice"].collateral == -39_005 * USDC_SCALE
+    assert state.accounts["bob"].positions["BTC-PERP"].size == ONE
+    assert state.accounts["bob"].collateral == 1_000 * USDC_SCALE
+    assert state.accounts["carol"].positions["BTC-PERP"].size == ONE
+
+
+def test_liquidation_buys_back_an_underwater_short() -> None:
+    state = State([MARKET])
+    state.oracle_prices["BTC-PERP"] = 50_000 * PRICE_SCALE
+    state.accounts["alice"] = Account(
+        "alice",
+        collateral=1_000 * USDC_SCALE,
+        positions={"BTC-PERP": Position("BTC-PERP", size=-ONE, entry_notional=10_000 * USDC_SCALE)},
+    )
+    state.books["BTC-PERP"].place(
+        Order(7, "bob", "BTC-PERP", Side.SELL, OrderType.LIMIT, 50_000 * PRICE_SCALE, 5 * ONE)
+    )
+    state.apply_block(block(1, timestamp_ms=1_000))
+    assert "BTC-PERP" not in state.accounts["alice"].positions
+    assert state.accounts["alice"].collateral == -39_025 * USDC_SCALE
+    assert state.accounts["bob"].positions["BTC-PERP"].size == -ONE
+
+
+def test_an_account_at_maintenance_is_not_liquidated() -> None:
+    state = State([MARKET])
+    state.oracle_prices["BTC-PERP"] = 10_000 * PRICE_SCALE
+    state.accounts["carol"] = long_at("carol", 300 * USDC_SCALE, 10_000 * USDC_SCALE)
+    state.books["BTC-PERP"].place(
+        Order(1, "dave", "BTC-PERP", Side.BUY, OrderType.LIMIT, 10_000 * PRICE_SCALE, ONE)
+    )
+    state.apply_block(block(1, timestamp_ms=1_000))
+    assert state.accounts["carol"].positions["BTC-PERP"].size == ONE
+    assert state.accounts["carol"].collateral == 300 * USDC_SCALE
+
+
 def test_off_tick_or_off_lot_orders_do_not_reach_the_book() -> None:
     market = Market(
         "BTC-PERP", tick_size=10, lot_size=5, max_leverage=10, maintenance_margin_bps=300

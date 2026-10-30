@@ -68,6 +68,7 @@ class State:
         self.mark_prices: dict[str, int] = {}
         self.funding_index: dict[str, int] = {m.name: 0 for m in markets}
         self.last_funding_ms: int | None = None
+        self.next_order_id = 1
         self.bridge = Bridge()
         self.withdrawal_nonce = 0
 
@@ -313,7 +314,41 @@ class State:
         return min(account.collateral, value - required)
 
     def liquidate(self) -> None:
-        return
+        for trader in sorted(self.accounts):
+            self._liquidate(trader)
+
+    def _liquidate(self, trader: str) -> None:
+        account = self.accounts[trader]
+        for market in sorted(account.positions):
+            value, required = self.margin(trader)
+            if value >= required:
+                return
+            pos = account.positions.get(market)
+            if pos is None or pos.size == 0:
+                continue
+            side = Side.SELL if pos.size > 0 else Side.BUY
+            order = Order(
+                id=self._take_order_id(market),
+                trader=trader,
+                market=market,
+                side=side,
+                type=OrderType.MARKET,
+                price=0,
+                size=abs(pos.size),
+                reduce_only=True,
+            )
+            book = self.books[market]
+            fills = book.place(order, position_of=lambda who, m=market: self._open_size(who, m))
+            for fill in fills:
+                self.settle_fill(fill)
+
+    def _take_order_id(self, market: str) -> int:
+        book = self.books[market]
+        while self.next_order_id in book.orders:
+            self.next_order_id += 1
+        order_id = self.next_order_id
+        self.next_order_id += 1
+        return order_id
 
     def state_root(self) -> bytes:
         """Hash of canonical state, so validators can compare results."""
