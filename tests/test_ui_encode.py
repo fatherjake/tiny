@@ -1,4 +1,4 @@
-"""Golden strings from the encoder in core/ui.html. encode() must emit them unchanged."""
+"""Golden strings shared with ui/src/lib/encode.ts. encode() must emit them unchanged."""
 
 from core.types import (
     CancelOrder,
