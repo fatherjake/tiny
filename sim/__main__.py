@@ -1,8 +1,8 @@
 """Playground: run a whole cluster in one process and watch it.
 
 Starts n Nodes on a MemoryNetwork, a fake price feed and a few trading bots, then serves the
-API and UI on node 0. The bridge is not running, so each bot is credited the same mock balance
-on every node before the first block. Kill a node with --kill to watch HotStuff with f faults.
+API and UI on node 0. Opening balances are deposits of one token, checked by the bridge and
+applied on every node before the first block. Kill a node with --kill to watch HotStuff with f faults.
 
     uv run python -m sim --validators 4 --kill 3
 
@@ -20,8 +20,9 @@ import uvicorn
 
 from core.api import create_app
 from core.node import Node, public_key
-from core.types import PRICE_SCALE, USDC_SCALE, Account, Market, Tx
+from core.types import PRICE_SCALE, USDC_SCALE, Market, Tx
 from sim.bots import Bot
+from sim.bridge import credit_accounts
 from sim.feed import FakePriceFeed
 from sim.net import MemoryNetwork
 
@@ -51,10 +52,7 @@ def build(
     feed = FakePriceFeed({MARKET.name: START_PRICE}, seed=seed)
     nodes = [Node(i, n, keys[i], pubs, [MARKET], net.endpoint(i), feed.tick) for i in range(n)]
     funded = [demo_key(i) for i in range(traders)]
-    for node in nodes:
-        for key in funded:
-            trader = public_key(key).hex()
-            node.state.accounts[trader] = Account(trader, collateral=MOCK_COLLATERAL)
+    credit_accounts(nodes, funded, MOCK_COLLATERAL)
     for node in nodes:
         node.start()
     return net, nodes, funded

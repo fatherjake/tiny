@@ -15,7 +15,7 @@ from collections.abc import Iterable
 from typing import assert_never
 
 from core.book import OrderBook
-from core.bridge import Bridge
+from core.bridge import Bridge, releasable
 from core.types import (
     PRICE_SCALE,
     SIZE_SCALE,
@@ -172,10 +172,12 @@ class State:
 
     def _deposit(self, proof: MessageProof) -> None:
         message = self.bridge.deliver(proof)
+        if message is None:
+            return
         self._account(message.recipient).collateral += message.amount
 
     def _withdraw(self, signer: str, body: Withdraw) -> None:
-        if body.trader != signer or body.amount <= 0:
+        if body.trader != signer or not releasable(body.dest_chain, body.dest_address, body.amount):
             return
         account = self.accounts[signer]
         if body.amount > self._free_collateral(signer):

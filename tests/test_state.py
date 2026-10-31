@@ -223,7 +223,7 @@ def test_withdraw_keeps_collateral_that_maintenance_still_needs() -> None:
         "BTC-PERP", size=ONE, entry_notional=50_000 * USDC_SCALE
     )
     state.mark_prices["BTC-PERP"] = 50_000 * PRICE_SCALE
-    state.apply_tx(sign_tx(ALICE, Withdraw(alice, 9_000 * USDC_SCALE, 1, "dest"), 1), 0)
+    state.apply_tx(sign_tx(ALICE, Withdraw(alice, 9_000 * USDC_SCALE, 1, "0x" + "33" * 20), 1), 0)
     assert state.accounts[alice].collateral == 10_000 * USDC_SCALE
     assert state.nonce(alice) == 1
 

@@ -1,19 +1,19 @@
 from core.node import public_key
 from core.types import USDC_SCALE
-from sim.__main__ import MARKET, MOCK_COLLATERAL, build
+from sim.__main__ import MARKET, build
 from sim.bots import Bot
 
 BALANCE = 1_000_000 * USDC_SCALE
 
 
-def test_sim_cluster_commits_one_state_and_keeps_the_mock_balance() -> None:
+def test_sim_cluster_commits_one_state_and_keeps_the_deposit() -> None:
     net, nodes, funded = build(4, (0, 0), 0.0, seed=0, traders=1)
     net.run_for(1_000)
     trader = public_key(funded[0]).hex()
     assert min(len(node.committed) for node in nodes) > 0
     assert len({node.state.state_root() for node in nodes}) == 1
     assert {node.state.accounts[trader].collateral for node in nodes} == {BALANCE}
-    assert MOCK_COLLATERAL == BALANCE
+    assert {tuple(sorted(node.state.bridge.delivered)) for node in nodes} == {((1, 0),)}
     assert nodes[0].state.oracle_prices["BTC-PERP"] > 0
 
 
