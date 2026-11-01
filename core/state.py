@@ -60,6 +60,15 @@ def median_price(submissions: list[OraclePrice]) -> int:
     return median([item.price for item in submissions])
 
 
+def _tx_class(tx: Tx) -> int:
+    """Lower runs first. Post-only places join class 0."""
+    match tx.body:
+        case CancelOrder():
+            return 0
+        case _:
+            return 1
+
+
 class State:
     def __init__(self, markets: list[Market], validators: Iterable[str] = ()) -> None:
         self.height = 0
@@ -84,11 +93,14 @@ class State:
         return account.nonce if account else 0
 
     def apply_block(self, block: Block) -> None:
-        """Apply every tx, then end-of-block work: oracle median, marks, funding, liquidations."""
+        """Apply every tx, then end-of-block work: oracle median, marks, funding, liquidations.
+
+        Cancels (class 0) run before every other tx (class 1). Within a class the
+        block order is kept, so a maker cancel in this block beats a taker.
+        """
         assert block.height == self.height + 1, "block height must be the next height"
         self.block_fills = []
-        for tx in block.txs:
-            self.apply_tx(tx, block.timestamp_ms)
+        self._apply_txs(block.txs)
         self.update_oracle_prices()
         self.oracle_submissions.clear()
         self.oracle_voters.clear()
@@ -96,6 +108,20 @@ class State:
         self.apply_funding(block.timestamp_ms)
         self.liquidate()
         self.height = block.height
+
+    def _apply_txs(self, txs: tuple[Tx, ...]) -> None:
+        # Nonce must be exactly the previous one plus one, judged in block order.
+        # The class sort runs a later-nonce cancel before that signer's earlier tx.
+        # Checking the nonce at execution time would drop the cancel and keep the
+        # earlier tx, so commit the nonce sequence first and only then run bodies.
+        accepted: list[tuple[int, Tx]] = []
+        for index, tx in enumerate(txs):
+            if tx.nonce != self.nonce(tx.signer) + 1:
+                continue
+            self._account(tx.signer).nonce = tx.nonce
+            accepted.append((index, tx))
+        for _, tx in sorted(accepted, key=lambda item: (_tx_class(item[1]), item[0])):
+            self._apply_body(tx)
 
     def apply_tx(self, tx: Tx, timestamp_ms: int) -> None:
         """Nonce must be exactly one ahead. A body that does nothing still consumes it.
@@ -105,6 +131,9 @@ class State:
         if tx.nonce != self.nonce(tx.signer) + 1:
             return
         self._account(tx.signer).nonce = tx.nonce
+        self._apply_body(tx)
+
+    def _apply_body(self, tx: Tx) -> None:
         match tx.body:
             case PlaceOrder(order=order):
                 self._place(tx.signer, order)
