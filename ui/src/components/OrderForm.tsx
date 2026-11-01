@@ -1,6 +1,6 @@
 import type { FormEvent } from "react";
 
-import { gridNote } from "../lib/orders";
+import { gridNote, marketPrice } from "../lib/orders";
 import { SCALE, bi, fmt, tryScaled } from "../lib/scale";
 import type { Depth, MarketInfo, OrderDraft, Scaled } from "../types";
 
@@ -30,14 +30,16 @@ export function OrderForm({
   onSubmit,
 }: Props) {
   const size = tryScaled(form.size);
-  const limitPx = form.type === "limit" ? tryScaled(form.price) : 0n;
+  const cap = form.type === "market" ? marketPrice(form.side, book) : null;
+  const limitPx = form.type === "limit" ? tryScaled(form.price) : cap;
   let touch: Scaled | null | undefined = null;
   if (form.type === "market" && book) {
     touch = form.side === "buy" ? book.best_ask : book.best_bid;
   }
   const notionalPx = form.type === "market" ? (touch == null ? null : bi(touch)) : limitPx;
   const notional = size != null && notionalPx != null ? (notionalPx * size) / SCALE : null;
-  const problem = gridNote(market, size, limitPx, form.type);
+  let problem = gridNote(market, size, limitPx, form.type);
+  if (!problem && form.type === "market" && cap == null) problem = "no quote";
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (!pending && !problem) onSubmit();
@@ -85,7 +87,12 @@ export function OrderForm({
               onInput={(event) => patch({ price: event.currentTarget.value })}
             />
           </>
-        ) : null}
+        ) : (
+          <>
+            <span>{form.side === "buy" ? "max price" : "min price"}</span>
+            <span>{fmt(cap)}</span>
+          </>
+        )}
       </div>
       <div className="row">
         <button

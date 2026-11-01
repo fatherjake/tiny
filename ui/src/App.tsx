@@ -9,7 +9,7 @@ import { OpenOrders } from "./components/OpenOrders";
 import { OrderForm } from "./components/OrderForm";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { TxError, generateKey, publicHex, readJson, secretFromHex, signAndPost } from "./lib/api";
-import { gridNote } from "./lib/orders";
+import { gridNote, marketPrice } from "./lib/orders";
 import { fmt, tryScaled, unscale } from "./lib/scale";
 import { remember, rememberPrint, seed } from "./lib/series";
 import type {
@@ -240,16 +240,18 @@ export function App() {
   async function place() {
     if (!key || !selected || busy.current) return;
     const size = tryScaled(form.size);
-    const price = form.type === "market" ? 0n : tryScaled(form.price);
+    const price = form.type === "market" ? marketPrice(form.side, book) : tryScaled(form.price);
     if (size == null || price == null) {
       setBad(true);
-      setNote("size and price must be numbers");
+      setNote(
+        form.type === "market" ? "no quote for a market order" : "size and price must be numbers",
+      );
       return;
     }
     if (gridNote(market, size, price, form.type)) return;
-    if (size <= 0n || (form.type === "limit" && price <= 0n)) {
+    if (size <= 0n || price <= 0n) {
       setBad(true);
-      setNote(form.type === "limit" ? "size and price must be positive" : "size must be positive");
+      setNote("size and price must be positive");
       return;
     }
     busy.current = true;

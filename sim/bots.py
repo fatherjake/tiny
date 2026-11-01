@@ -12,6 +12,7 @@ MAX_SIZE = SIZE_SCALE // 2  # 0.50
 MIN_GAP_MS = 250
 MAX_GAP_MS = 900
 KEEP = 6
+MARKET_SLIPPAGE_BPS = 100
 
 
 class Bot:
@@ -41,10 +42,17 @@ class Bot:
         if book is None:
             return
         live = [order_id for order_id in self.resting if order_id in book.orders]
-        if book.best_bid() is not None and book.best_ask() is not None:
+        bid, ask = book.best_bid(), book.best_ask()
+        if bid is not None and ask is not None:
             side = Side.BUY if self._steps % 2 == 0 else Side.SELL
             self._steps += 1
-            self._place(node, side, OrderType.MARKET, 0, self._size())
+            touch = ask if side == Side.BUY else bid
+            band = (
+                10_000 + MARKET_SLIPPAGE_BPS if side == Side.BUY else 10_000 - MARKET_SLIPPAGE_BPS
+            )
+            price = touch * band // 10_000
+            if price > 0:
+                self._place(node, side, OrderType.MARKET, price, self._size())
         if len(live) >= KEEP:
             order_id = live[0]
             self.resting.remove(order_id)
