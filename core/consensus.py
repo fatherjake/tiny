@@ -4,7 +4,7 @@ Consensus only orders transactions. It never looks inside them: committed blocks
 the state machine (state.py), which every validator runs identically.
 
 Pieces:
-- Replica: safe-to-vote rule, locking (b_lock), three-chain commit, vote collection into QCs.
+- Consensus: safe-to-vote rule, locking (b_lock), three-chain commit, vote collection into QCs.
 - Pacemaker: view timers, Timeout messages, TCs, jumping ahead on any newer QC or TC.
 - Leader rotation: round-robin on view.
 - Crypto: Ed25519 signatures over Block.to_bytes() / vote payloads.
@@ -65,7 +65,9 @@ def timeout_payload(view: View, sender: NodeId) -> bytes:
     return encode(("timeout", view, sender))
 
 
-class Replica:
+class Consensus:
+    """One validator's HotStuff consensus engine (called a replica in the HotStuff paper)."""
+
     def __init__(
         self,
         node_id: NodeId,
