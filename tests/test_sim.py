@@ -32,8 +32,8 @@ def test_bots_quote_both_sides_and_trade() -> None:
         "bids": [(49_938_525_367, 129_050), (49_734_260_013, 250_964)],
         "asks": [(50_056_622_280, 175_778), (50_282_307_926, 132_203)],
     }
-    assert nodes[0].state.accounts[public_key(keys[0]).hex()].collateral == 1_000_106_999_013
-    assert nodes[0].state.accounts[public_key(keys[1]).hex()].collateral == 999_777_186_442
+    assert nodes[0].state.accounts[public_key(keys[0]).hex()].collateral == 1_000_107_012_639
+    assert nodes[0].state.accounts[public_key(keys[1]).hex()].collateral == 999_777_172_763
     assert next(iter(nodes[0].trades)) == {
         "seq": 1,
         "height": 42,

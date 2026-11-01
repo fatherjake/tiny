@@ -270,6 +270,41 @@ def test_margin_marks_positions_to_market_and_sums_maintenance() -> None:
     assert state.margin("alice") == (10_000 * USDC_SCALE, 2_000 * USDC_SCALE)
 
 
+def test_withdraw_settles_funding_debt_before_cash_leaves() -> None:
+    state = State([MARKET])
+    alice = fund(state, ALICE, 1_000 * USDC_SCALE)
+    state.accounts[alice].positions["BTC-PERP"] = Position(
+        "BTC-PERP", size=ONE, entry_notional=50_000 * USDC_SCALE
+    )
+    state.funding_index["BTC-PERP"] = 500 * PRICE_SCALE
+    state.mark_prices["BTC-PERP"] = 60_000 * PRICE_SCALE
+    dest = "0x" + "33" * 20
+    state.apply_tx(sign_tx(ALICE, Withdraw(alice, 1_000 * USDC_SCALE, 1, dest), 1), 0)
+    assert state.accounts[alice].collateral == 500 * USDC_SCALE
+    assert state.bridge.outbox == []
+    state.apply_tx(sign_tx(ALICE, Withdraw(alice, 500 * USDC_SCALE, 1, dest), 2), 0)
+    assert state.accounts[alice].collateral == 0
+    assert state.bridge.outbox[0].amount == 500 * USDC_SCALE
+
+
+def test_funding_debt_liquidates_without_a_trade() -> None:
+    state = State([MARKET])
+    state.oracle_prices["BTC-PERP"] = 9_000 * PRICE_SCALE
+    state.accounts["carol"] = long_at("carol", 300 * USDC_SCALE, 10_000 * USDC_SCALE)
+    state.books["BTC-PERP"].place(
+        Order(1, "dave", "BTC-PERP", Side.BUY, OrderType.LIMIT, 10_000 * PRICE_SCALE, ONE)
+    )
+    state.books["BTC-PERP"].place(
+        Order(2, "eve", "BTC-PERP", Side.SELL, OrderType.LIMIT, 11_000 * PRICE_SCALE, ONE)
+    )
+    state.apply_block(block(1, timestamp_ms=1_000))
+    assert state.accounts["carol"].positions["BTC-PERP"].size == ONE
+    assert state.accounts["carol"].collateral == 300 * USDC_SCALE
+    state.apply_block(block(2, timestamp_ms=1_000 + HOUR_MS))
+    assert "BTC-PERP" not in state.accounts["carol"].positions
+    assert state.accounts["carol"].collateral == -705 * USDC_SCALE
+
+
 def test_withdraw_keeps_collateral_that_maintenance_still_needs() -> None:
     state = State([MARKET])
     alice = fund(state, ALICE, 10_000 * USDC_SCALE)
@@ -412,16 +447,24 @@ def test_funding_pays_the_premium_for_elapsed_block_time() -> None:
     assert state.accounts[alice].collateral == 9_990 * USDC_SCALE
     assert state.accounts[bob].collateral == 9_975 * USDC_SCALE
     state.apply_block(block(2, timestamp_ms=1_000 + HOUR_MS))
-    assert state.accounts[bob].collateral == 8_975 * USDC_SCALE
-    assert state.accounts[alice].collateral == 10_990 * USDC_SCALE
+    # Cash stays put. Margin includes the 1_000 USDC payment and the 1_000 USDC of unrealized pnl.
+    assert state.accounts[bob].collateral == 9_975 * USDC_SCALE
+    assert state.accounts[alice].collateral == 9_990 * USDC_SCALE
+    assert state.accounts[bob].positions["BTC-PERP"].funding_index == 0
+    assert state.margin(bob) == (9_975 * USDC_SCALE, 1_530 * USDC_SCALE)
+    assert state.margin(alice) == (9_990 * USDC_SCALE, 1_530 * USDC_SCALE)
     state.apply_block(block(3, timestamp_ms=500))
-    assert state.accounts[bob].collateral == 8_975 * USDC_SCALE
+    assert state.accounts[bob].collateral == 9_975 * USDC_SCALE
+    assert state.margin(bob) == (9_975 * USDC_SCALE, 1_530 * USDC_SCALE)
     state.apply_block(block(4, timestamp_ms=1_000 + HOUR_MS + HOUR_MS // 2))
-    assert state.accounts[bob].collateral == 8_475 * USDC_SCALE
-    assert state.accounts[alice].collateral == 11_490 * USDC_SCALE
-    assert (
-        state.accounts[bob].positions["BTC-PERP"].funding_index == state.funding_index["BTC-PERP"]
-    )
+    assert state.funding_index["BTC-PERP"] == 1_500 * PRICE_SCALE
+    assert state.accounts[bob].collateral == 9_975 * USDC_SCALE
+    assert state.accounts[alice].collateral == 9_990 * USDC_SCALE
+    assert state.margin(bob) == (9_475 * USDC_SCALE, 1_530 * USDC_SCALE)
+    assert state.margin(alice) == (10_490 * USDC_SCALE, 1_530 * USDC_SCALE)
+    state.apply_tx(sign_tx(BOB, Withdraw(bob, USDC_SCALE, 1, "0x" + "33" * 20), 3), 0)
+    assert state.accounts[bob].collateral == 8_474 * USDC_SCALE
+    assert state.accounts[bob].positions["BTC-PERP"].funding_index == 1_500 * PRICE_SCALE
 
 
 def test_state_root_hashes_the_canonical_state() -> None:

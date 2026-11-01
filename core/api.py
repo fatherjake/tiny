@@ -106,6 +106,10 @@ def create_app(node: Node) -> FastAPI:
             raise HTTPException(404, f"no account {trader!r}")
         value, maintenance = node.state.margin(trader)
         body = AccountJson(found).model_dump(mode="json")
+        # Report the settled view. The account itself stays lazy so a read cannot move state_root.
+        body["collateral"] = found.collateral - node.state.funding_payment(found)
+        for name, pos in body["positions"].items():
+            pos["funding_index"] = node.state.funding_index[name]
         return {**body, "account_value": value, "maintenance_margin": maintenance}
 
     @app.get("/status")
