@@ -5,8 +5,8 @@ A teaching-sized Hyperliquid in Python. Each chain component is one file in `cor
 | File | What it is |
 | --- | --- |
 | `core/types.py` | Shared data types only, no logic |
-| `core/consensus.py` | Chained HotStuff replica and pacemaker |
-| `core/node.py` | One validator: keys, mempool, replica, state, price submissions |
+| `core/consensus.py` | Chained HotStuff consensus engine and pacemaker |
+| `core/node.py` | One validator: keys, mempool, consensus, state, price submissions |
 | `core/net.py` | The `Transport` interface and TCP |
 | `core/state.py` | Deterministic state machine: accounts, positions, oracle prices, funding, liquidations |
 | `core/book.py` | Price-time priority order book |
