@@ -12,7 +12,7 @@ A teaching-sized Hyperliquid in Python. Each chain component is one file in `cor
 | `core/book.py` | Price-time priority order book |
 | `core/bridge.py` | On-chain side of a LayerZero v1 style bridge: stores oracle-posted headers, verifies relayer Merkle proofs |
 | `core/api.py` | REST and WebSocket API |
-| `ui/` | Trading UI (Vite, TypeScript, React). Build it, then the API serves `ui/dist` at `/` |
+| `ui/` | Trading UI (Vite, TypeScript, React). `npm run dev` proxies the API |
 | `sim/` | Playground: a whole cluster in one process with bots (`bots.py`), a fake price feed (`feed.py`), an in-memory network with faults (`net.py`), the bridge's source chain, oracle and relayer (`bridge.py`) and the API |
 
 Consensus only orders transactions. Every validator applies committed blocks to `State` and must get the same result, so the state machine uses integers only, block timestamps instead of the clock, and no randomness.

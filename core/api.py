@@ -2,7 +2,6 @@
 
 REST: POST /tx, GET /book/{market}, GET /account/{trader}, GET /markets, GET /trades, GET /status.
 WS:   /ws streams new committed blocks, book depth, and trades.
-Serves the Vite build in ui/dist at /.
 
 JSON is untrusted. Pydantic decodes it straight into the dataclasses in core.types (strict: no
 str -> int coercion), once, here; nothing past this file sees a dict. Bytes travel as hex strings,
@@ -14,17 +13,13 @@ Budget: < 1,000 lines.
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 
 from fastapi import Body, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, PlainTextResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import ConfigDict, RootModel, ValidationError
 
 from core.node import Node
 from core.types import Account, Block, Market, Tx
 
-UI_DIST = Path(__file__).resolve().parents[1] / "ui" / "dist"
 WS_INTERVAL_S = 0.25
 JSON_CONFIG = ConfigDict(strict=True, val_json_bytes="hex", ser_json_bytes="hex")
 
@@ -72,29 +67,6 @@ def book_json(node: Node, market: str, levels: int) -> dict[str, object]:
         "mark_price": node.state.mark_prices.get(market),
         **book.depth(levels),
     }
-
-
-def mount_ui(app: FastAPI) -> None:
-    """Serve ui/dist. A missing build is a 503, not a stack trace."""
-    index = UI_DIST / "index.html"
-    assets = UI_DIST / "assets"
-    if not index.is_file():
-
-        @app.get("/")
-        def ui_missing() -> PlainTextResponse:
-            return PlainTextResponse(
-                "UI build missing. In the ui/ directory, run npm install && npm run build.\n",
-                status_code=503,
-            )
-
-        return
-
-    @app.get("/")
-    def ui() -> FileResponse:
-        return FileResponse(index)
-
-    if assets.is_dir():
-        app.mount("/assets", StaticFiles(directory=assets), name="assets")
 
 
 def create_app(node: Node) -> FastAPI:
@@ -177,5 +149,4 @@ def create_app(node: Node) -> FastAPI:
         except WebSocketDisconnect:
             return
 
-    mount_ui(app)
     return app
