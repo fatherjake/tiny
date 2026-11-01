@@ -33,10 +33,10 @@ class OrderBook:
         self.orders: dict[int, Order] = {}
 
     def place(self, order: Order, position_of: Callable[[str], int] | None = None) -> list[Fill]:
-        """Match against the opposite side. Limit remainders rest; market orders never do."""
+        """Match up to the order's price. Limit remainders rest; market orders never do."""
         if order.market != self.market or order.size <= 0 or order.id in self.orders:
             return []
-        if order.type == OrderType.LIMIT and order.price <= 0:
+        if order.price <= 0:
             return []
         remaining = order.size
         if order.reduce_only:
@@ -46,7 +46,7 @@ class OrderBook:
             price = self._touch(order.side)
             if price is None:
                 break
-            if order.type == OrderType.LIMIT and not self._crosses(order, price):
+            if not self._crosses(order, price):
                 break
             queue = self.asks[price] if order.side == Side.BUY else self.bids[price]
             while remaining > 0 and queue:
