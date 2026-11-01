@@ -159,7 +159,9 @@ class Order:
     market: str
     side: Side
     type: OrderType
-    price: int  # PRICE_SCALE; ignored for market orders
+    # PRICE_SCALE. For LIMIT it's the resting price; for MARKET it's the worst
+    # acceptable price (max for buys, min for sells).
+    price: int
     size: int  # SIZE_SCALE
     reduce_only: bool = False
 
