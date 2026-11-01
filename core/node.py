@@ -2,7 +2,7 @@
 
     keypair -> signs votes, timeouts, proposals and oracle price txs
     mempool -> pending txs, deduped by (signer, nonce); feeds proposals when this node leads
-    Replica -> HotStuff (consensus.py); on_commit hands blocks to State
+    Consensus -> HotStuff (consensus.py); on_commit hands blocks to State
     State   -> deterministic state machine (state.py); state_root() compared across nodes in tests
     sync    -> snapshot plus block replay so a new or lagging node can catch up
     price submitter -> each block, sign a SetOraclePrice tx from the price feed
@@ -34,7 +34,7 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
-from core.consensus import GENESIS, Replica
+from core.consensus import GENESIS, Consensus
 from core.net import TcpTransport, Transport
 from core.state import State
 from core.types import (
@@ -221,7 +221,7 @@ class Node:
         self.trades: deque[dict[str, object]] = deque(maxlen=20_000)
         pubs = dict(validator_pubkeys)
         pubs[node_id] = public_key(private_key)
-        self.replica = Replica(
+        self.consensus = Consensus(
             node_id,
             n,
             send=transport.send,
@@ -240,17 +240,17 @@ class Node:
         cancel = getattr(self.transport, "cancel", None)
         now_ms = getattr(self.transport, "now_ms", None)
         if callable(schedule):
-            self.replica.schedule = schedule
+            self.consensus.schedule = schedule
         if callable(cancel):
-            self.replica.cancel = cancel
+            self.consensus.cancel = cancel
         if callable(now_ms):
-            self.replica.now_ms = now_ms
+            self.consensus.now_ms = now_ms
         self.submit_prices()
-        self.replica.start()
+        self.consensus.start()
         self._request_sync(None)
 
     def stop(self) -> None:
-        self.replica.stop()
+        self.consensus.stop()
 
     def submit(self, tx: Tx) -> bool:
         """Entry point for the API: check it, add it to the mempool, gossip it to the other nodes.
@@ -277,18 +277,18 @@ class Node:
         return self.mempool.add(tx)
 
     def on_message(self, sender: NodeId, msg: object) -> None:
-        """Route consensus messages to the replica, and sync messages to the catch-up path."""
+        """Route consensus messages to the consensus engine, and sync messages to the catch-up path."""
         match msg:
             case Tx():
                 self.accept(msg)  # gossiped by the node it was submitted to; don't re-broadcast
             case Proposal():
                 self._on_proposal(msg)
             case Vote():
-                self.replica.on_vote(msg)
+                self.consensus.on_vote(msg)
             case Timeout():
-                self.replica.on_timeout(msg)
+                self.consensus.on_timeout(msg)
             case NewView():
-                self.replica.on_new_view(msg)
+                self.consensus.on_new_view(msg)
             case SyncRequest():
                 self._serve_sync(sender, msg)
             case Snapshot():
@@ -318,7 +318,7 @@ class Node:
         self.mempool.remove_committed(block, self.state.nonce)
         self.committed.append(block)
         self.by_height[block.height] = block
-        self.replica.blocks[block.hash] = block
+        self.consensus.blocks[block.hash] = block
         if block.height % SNAPSHOT_EVERY == 0:
             self.latest_snapshot = Snapshot(block.height, self.state.to_bytes())
         if not self.catching_up:
@@ -348,7 +348,7 @@ class Node:
             chain.append(current)
             if current.height == self.state.height + 1:
                 break
-            parent = self.replica.blocks.get(current.parent)
+            parent = self.consensus.blocks.get(current.parent)
             if parent is None:
                 return None
             current = parent
@@ -373,12 +373,12 @@ class Node:
                 self._buffer(block)
             return
         self.mempool.mark_proposed(block.txs)
-        self.replica.on_proposal(msg)
+        self.consensus.on_proposal(msg)
 
     def _parent_unknown(self, block: Block) -> bool:
         if block.parent == GENESIS:
             return False
-        if block.parent in self.replica.blocks:
+        if block.parent in self.consensus.blocks:
             return False
         return all(item.hash != block.parent for item in self.committed)
 
@@ -455,7 +455,7 @@ class Node:
         for block in blocks:
             if block.height <= self.state.height:
                 self.by_height.setdefault(block.height, block)
-                self.replica.blocks.setdefault(block.hash, block)
+                self.consensus.blocks.setdefault(block.hash, block)
                 continue
             if not self._extends_tip(block) or not self._adopt(block):
                 break
@@ -465,7 +465,7 @@ class Node:
     def _chain_ok(self, blocks: tuple[Block, ...]) -> bool:
         prev: Block | None = None
         for block in blocks:
-            if block.qc.block_hash != block.parent or not self.replica.verify_qc(block.qc):
+            if block.qc.block_hash != block.parent or not self.consensus.verify_qc(block.qc):
                 return False
             if prev is not None and (block.parent != prev.hash or block.height != prev.height + 1):
                 return False
@@ -483,7 +483,7 @@ class Node:
             (
                 block.qc
                 for block in blocks
-                if block.qc.block_hash == header.hash and self.replica.verify_qc(block.qc)
+                if block.qc.block_hash == header.hash and self.consensus.verify_qc(block.qc)
             ),
             None,
         )
@@ -499,8 +499,8 @@ class Node:
             return True
         self.state = loaded
         self.by_height[header.height] = header
-        self.replica.blocks[header.hash] = header
-        self.replica.b_exec = header
+        self.consensus.blocks[header.hash] = header
+        self.consensus.b_exec = header
         self.latest_snapshot = snap
         return True
 
@@ -514,8 +514,8 @@ class Node:
         if self.preview_root(block) != block.state_root:
             return False
         self.on_commit(block)
-        self.replica.b_exec = block
-        self.replica.view = max(self.replica.view, block.view)
+        self.consensus.b_exec = block
+        self.consensus.view = max(self.consensus.view, block.view)
         return block.height <= self.state.height
 
     def _drain_future(self) -> None:
@@ -523,7 +523,7 @@ class Node:
             height: block for height, block in self.future.items() if height > self.state.height
         }
         while (block := self.future.get(self.state.height + 1)) is not None:
-            if block.qc.block_hash != block.parent or not self.replica.verify_qc(block.qc):
+            if block.qc.block_hash != block.parent or not self.consensus.verify_qc(block.qc):
                 break
             if not self._extends_tip(block) or not self._adopt(block):
                 break
@@ -551,12 +551,12 @@ class Node:
         block = self.by_height.get(self.state.height)
         if block is None:
             return
-        self.replica.blocks[block.hash] = block
-        self.replica.b_exec = block
-        self.replica.view = max(self.replica.view, block.view)
-        self.replica.update_high_qc(block.qc)
-        if self.replica.view == block.view:
-            self.replica._consider_vote(block)
+        self.consensus.blocks[block.hash] = block
+        self.consensus.b_exec = block
+        self.consensus.view = max(self.consensus.view, block.view)
+        self.consensus.update_high_qc(block.qc)
+        if self.consensus.view == block.view:
+            self.consensus._consider_vote(block)
 
     def _peers(self) -> list[NodeId]:
         return sorted(peer for peer in self.validator_pubkeys if peer != self.id)
@@ -621,7 +621,7 @@ class Node:
         signer = public_key(self.private_key).hex()
         pending = [nonce for who, nonce in self.mempool.pending if who == signer]
         nonce = max([self.state.nonce(signer), *pending]) + 1
-        body = SetOraclePrice(OraclePrice(market, prices[market], self.replica.now_ms(), {}))
+        body = SetOraclePrice(OraclePrice(market, prices[market], self.consensus.now_ms(), {}))
         self.submit(sign_tx(self.private_key, body, nonce))
 
 
