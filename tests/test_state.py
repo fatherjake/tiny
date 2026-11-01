@@ -137,6 +137,55 @@ def place(
     return sign_tx(key, PlaceOrder(order), nonce)
 
 
+def _with_resting_ask() -> tuple[State, str, str]:
+    state = State([MARKET])
+    alice = fund(state, ALICE, 1_000 * USDC_SCALE)
+    bob = fund(state, BOB, 1_000 * USDC_SCALE)
+    state.apply_block(block(1, place(ALICE, 1, 1, Side.SELL, PX, ONE), timestamp_ms=1_000))
+    return state, alice, bob
+
+
+def test_a_cancel_in_the_block_runs_before_the_taker() -> None:
+    filled, alice, bob = _with_resting_ask()
+    filled.apply_block(
+        block(2, place(BOB, 1, 2, Side.BUY, PX, ONE, OrderType.MARKET), timestamp_ms=2_000)
+    )
+    assert filled.accounts[bob].positions["BTC-PERP"].size == ONE
+    assert filled.accounts[alice].positions["BTC-PERP"].size == -ONE
+
+    state, alice, bob = _with_resting_ask()
+    cancel = sign_tx(ALICE, CancelOrder(alice, "BTC-PERP", 1), 2)
+    state.apply_block(
+        block(
+            2,
+            place(BOB, 1, 2, Side.BUY, PX, ONE, OrderType.MARKET),
+            cancel,
+            timestamp_ms=2_000,
+        )
+    )
+    assert "BTC-PERP" not in state.accounts[bob].positions
+    assert "BTC-PERP" not in state.accounts[alice].positions
+    assert state.books["BTC-PERP"].orders == {}
+    assert state.block_fills == []
+    assert state.accounts[bob].collateral == 1_000 * USDC_SCALE
+    assert state.accounts[alice].collateral == 1_000 * USDC_SCALE
+    assert state.nonce(bob) == 1
+    assert state.nonce(alice) == 2
+
+
+def test_a_later_nonce_cancel_still_applies_ahead_of_its_signer() -> None:
+    state, alice, _ = _with_resting_ask()
+    bid = place(ALICE, 2, 2, Side.BUY, PX // 2, ONE)
+    cancel = sign_tx(ALICE, CancelOrder(alice, "BTC-PERP", 1), 3)
+    state.apply_block(block(2, bid, cancel, timestamp_ms=2_000))
+    assert 1 not in state.books["BTC-PERP"].orders
+    resting = state.books["BTC-PERP"].orders[2]
+    assert resting.side == Side.BUY
+    assert resting.price == PX // 2
+    assert resting.size == ONE
+    assert state.nonce(alice) == 3
+
+
 def test_fills_charge_fees_and_open_signed_positions() -> None:
     state = State([MARKET])
     alice = fund(state, ALICE, 1_000 * USDC_SCALE)
