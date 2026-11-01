@@ -8,6 +8,7 @@ Fill these in. Agents run them without asking.
 
 - Install: `uv sync`
 - Run locally: `uv run python -m sim --validators 4`
+- One validator: `uv run python -m core --id N --config cluster.json --key-file key`
 - Test: `uv run pytest`
 - Lint, format, and line limit: `uv run ruff check . && uv run ruff format --check . && uv run python scripts/check_loc.py`
 
