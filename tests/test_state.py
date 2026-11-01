@@ -191,7 +191,7 @@ def test_fills_charge_fees_and_open_signed_positions() -> None:
     alice = fund(state, ALICE, 1_000 * USDC_SCALE)
     bob = fund(state, BOB, 1_000 * USDC_SCALE)
     state.apply_tx(place(ALICE, 1, 1, Side.SELL, PX, ONE), 0)
-    state.apply_tx(place(BOB, 1, 2, Side.BUY, 0, ONE, OrderType.MARKET), 0)
+    state.apply_tx(place(BOB, 1, 2, Side.BUY, PX, ONE, OrderType.MARKET), 0)
     assert state.accounts[alice].positions["BTC-PERP"].size == -ONE
     assert state.accounts[alice].positions["BTC-PERP"].entry_notional == 50_000 * USDC_SCALE
     assert state.accounts[alice].collateral == 990 * USDC_SCALE
@@ -205,9 +205,14 @@ def test_closing_realizes_pnl_and_reduce_only_cannot_flip() -> None:
     alice = fund(state, ALICE, 20_000 * USDC_SCALE)
     bob = fund(state, BOB, 20_000 * USDC_SCALE)
     state.apply_tx(place(ALICE, 1, 1, Side.SELL, PX, ONE), 0)
-    state.apply_tx(place(BOB, 1, 2, Side.BUY, 0, ONE, OrderType.MARKET), 0)
+    state.apply_tx(place(BOB, 1, 2, Side.BUY, PX, ONE, OrderType.MARKET), 0)
     state.apply_tx(place(ALICE, 2, 3, Side.BUY, 60_000 * PRICE_SCALE, ONE), 0)
-    state.apply_tx(place(BOB, 2, 4, Side.SELL, 0, 5 * ONE, OrderType.MARKET, reduce_only=True), 0)
+    state.apply_tx(
+        place(
+            BOB, 2, 4, Side.SELL, 60_000 * PRICE_SCALE, 5 * ONE, OrderType.MARKET, reduce_only=True
+        ),
+        0,
+    )
     assert "BTC-PERP" not in state.accounts[bob].positions
     assert "BTC-PERP" not in state.accounts[alice].positions
     assert state.accounts[bob].collateral == 29_945 * USDC_SCALE
@@ -220,9 +225,9 @@ def test_a_partial_close_keeps_the_remaining_entry() -> None:
     alice = fund(state, ALICE, 1_000 * USDC_SCALE)
     bob = fund(state, BOB, 1_000 * USDC_SCALE)
     state.apply_tx(place(ALICE, 1, 1, Side.SELL, PX, 2 * ONE), 0)
-    state.apply_tx(place(BOB, 1, 2, Side.BUY, 0, 2 * ONE, OrderType.MARKET), 0)
+    state.apply_tx(place(BOB, 1, 2, Side.BUY, PX, 2 * ONE, OrderType.MARKET), 0)
     state.apply_tx(place(BOB, 2, 3, Side.SELL, PX, ONE), 0)
-    state.apply_tx(place(ALICE, 2, 4, Side.BUY, 0, ONE, OrderType.MARKET), 0)
+    state.apply_tx(place(ALICE, 2, 4, Side.BUY, PX, ONE, OrderType.MARKET), 0)
     assert state.accounts[bob].positions["BTC-PERP"].size == ONE
     assert state.accounts[bob].positions["BTC-PERP"].entry_notional == 50_000 * USDC_SCALE
     assert state.accounts[bob].collateral == 940 * USDC_SCALE
@@ -236,9 +241,9 @@ def test_a_fill_that_flips_the_position_opens_the_remainder() -> None:
     alice = fund(state, ALICE, 1_000 * USDC_SCALE)
     bob = fund(state, BOB, 1_000 * USDC_SCALE)
     state.apply_tx(place(ALICE, 1, 1, Side.SELL, PX, ONE), 0)
-    state.apply_tx(place(BOB, 1, 2, Side.BUY, 0, ONE, OrderType.MARKET), 0)
+    state.apply_tx(place(BOB, 1, 2, Side.BUY, PX, ONE, OrderType.MARKET), 0)
     state.apply_tx(place(BOB, 2, 3, Side.SELL, PX, 2 * ONE), 0)
-    state.apply_tx(place(ALICE, 2, 4, Side.BUY, 0, 2 * ONE, OrderType.MARKET), 0)
+    state.apply_tx(place(ALICE, 2, 4, Side.BUY, PX, 2 * ONE, OrderType.MARKET), 0)
     assert state.accounts[alice].positions["BTC-PERP"].size == ONE
     assert state.accounts[alice].positions["BTC-PERP"].entry_notional == 50_000 * USDC_SCALE
     assert state.accounts[alice].collateral == 940 * USDC_SCALE
@@ -330,6 +335,25 @@ def test_an_account_at_maintenance_is_not_liquidated() -> None:
     assert state.accounts["carol"].collateral == 300 * USDC_SCALE
 
 
+def test_liquidation_through_a_thin_book_keeps_the_rest_open() -> None:
+    state = State([MARKET])
+    mark = 10_000 * PRICE_SCALE
+    state.oracle_prices["BTC-PERP"] = mark
+    state.accounts["alice"] = long_at("alice", 100 * USDC_SCALE, 50_000 * USDC_SCALE, size=3 * ONE)
+    inside = 9_600 * PRICE_SCALE
+    outside = 9_400 * PRICE_SCALE
+    state.books["BTC-PERP"].place(
+        Order(1, "bob", "BTC-PERP", Side.BUY, OrderType.LIMIT, inside, ONE)
+    )
+    state.books["BTC-PERP"].place(
+        Order(2, "carol", "BTC-PERP", Side.BUY, OrderType.LIMIT, outside, 10 * ONE)
+    )
+    state.apply_block(block(1, timestamp_ms=1_000))
+    assert [(fill.price, fill.size) for fill in state.block_fills] == [(inside, ONE)]
+    assert state.accounts["alice"].positions["BTC-PERP"].size == 2 * ONE
+    assert state.books["BTC-PERP"].depth() == {"bids": [(outside, 10 * ONE)], "asks": []}
+
+
 def test_off_tick_or_off_lot_orders_do_not_reach_the_book() -> None:
     market = Market(
         "BTC-PERP", tick_size=10, lot_size=5, max_leverage=10, maintenance_margin_bps=300
@@ -376,7 +400,7 @@ def test_funding_pays_the_premium_for_elapsed_block_time() -> None:
     opened = block(
         1,
         place(ALICE, 1, 1, Side.SELL, PX, ONE),
-        place(BOB, 1, 2, Side.BUY, 0, ONE, OrderType.MARKET),
+        place(BOB, 1, 2, Side.BUY, PX, ONE, OrderType.MARKET),
         place(ALICE, 2, 3, Side.BUY, 51_000 * PRICE_SCALE, ONE),
         place(BOB, 2, 4, Side.SELL, 52_000 * PRICE_SCALE, ONE),
         *votes,
@@ -471,7 +495,7 @@ def test_state_root_ignores_insertion_order_and_changes_with_state() -> None:
     trades = block(
         1,
         place(ALICE, 1, 1, Side.SELL, PX, ONE),
-        place(BOB, 1, 2, Side.BUY, 0, ONE, OrderType.MARKET),
+        place(BOB, 1, 2, Side.BUY, PX, ONE, OrderType.MARKET),
         oracle(1, price=PX),
         timestamp_ms=1_000,
     )
