@@ -46,6 +46,7 @@ from core.types import (
 MAKER_FEE_BPS = 2
 TAKER_FEE_BPS = 5
 HOUR_MS = 3_600_000
+LIQUIDATION_SLIPPAGE_BPS = 500
 
 
 def median(values: list[int]) -> int:
@@ -365,14 +366,25 @@ class State:
             pos = account.positions.get(market)
             if pos is None or pos.size == 0:
                 continue
+            mark = self.mark_prices.get(market)
+            if mark is None:
+                continue
             side = Side.SELL if pos.size > 0 else Side.BUY
+            band = (
+                10_000 + LIQUIDATION_SLIPPAGE_BPS
+                if side == Side.BUY
+                else 10_000 - LIQUIDATION_SLIPPAGE_BPS
+            )
+            price = mark * band // 10_000
+            if price <= 0:
+                continue
             order = Order(
                 id=self._take_order_id(market),
                 trader=trader,
                 market=market,
                 side=side,
                 type=OrderType.MARKET,
-                price=0,
+                price=price,
                 size=abs(pos.size),
                 reduce_only=True,
             )
