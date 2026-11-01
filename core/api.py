@@ -117,7 +117,7 @@ def create_app(node: Node) -> FastAPI:
         return {
             "node": node.id,
             "height": node.state.height,
-            "view": node.replica.view,
+            "view": node.consensus.view,
             "tip": node.committed[-1].hash.hex() if node.committed else None,
             "mempool": len(node.mempool.pending),
             "state_root": node.state.state_root().hex(),
