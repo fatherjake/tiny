@@ -6,6 +6,7 @@ A teaching-sized Hyperliquid in Python. Each chain component is one file in `cor
 | --- | --- |
 | `core/types.py` | Shared data types only, no logic |
 | `core/consensus.py` | Chained HotStuff consensus engine and pacemaker |
+| `core/__main__.py` | Process entry for one validator over TCP (`python -m core`) |
 | `core/node.py` | One validator: keys, mempool, consensus, state, price submissions |
 | `core/net.py` | The `Transport` interface and TCP |
 | `core/state.py` | Deterministic state machine: accounts, positions, oracle prices, funding, liquidations |
@@ -22,13 +23,14 @@ uv sync
 uv run pytest
 cd ui && npm install && npm test && npm run build
 uv run python -m sim --validators 4
+uv run python -m core --id 0 --config cluster.json --key-file key.hex
 ```
 
 `npm run dev` in `ui/` reloads the UI and proxies the API on port 8000.
 
 Fault scenarios (crashes, partitions, lossy links) are pytest cases in `tests/test_faults.py`. They are marked xfail until the components are built.
 
-Always run modules from the repo root with `python -m core.<name>` or `python -m sim`. Running a file directly puts `core/` on the path and `types.py` shadows the standard library.
+Always run from the repo root. One validator is `python -m core`. A component module is `python -m core.<name>`, and the playground is `python -m sim`. Running a file directly puts `core/` on the path and `types.py` shadows the standard library.
 
 ## Networking notes
 

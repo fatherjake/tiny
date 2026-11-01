@@ -56,7 +56,7 @@ Hard limits on compression:
 
 - `uv run pytest`, `uv run ruff check .`, `uv run ruff format .`, `uv run python scripts/check_loc.py`.
 - Test behaviour through the real objects: spin up a `tests/cluster.py` cluster rather than mocking the replica.
-- Run modules from the repo root with `python -m core.<name>` or `python -m sim`. Running a file directly makes `core/types.py` shadow the standard library.
+- Run from the repo root. One validator is `python -m core`. A component module is `python -m core.<name>`, and the playground is `python -m sim`. Running a file directly makes `core/types.py` shadow the standard library.
 - Use `logging` with context (node id, view, block hash prefix), not `print`, in `core/`.
 
 Examples: `references/patterns.md`.

@@ -92,7 +92,7 @@ def test_cli_validators_commit_on_their_own_ports(tmp_path: Path) -> None:
             [
                 sys.executable,
                 "-m",
-                "core.node",
+                "core",
                 "--id",
                 str(i),
                 "--config",
