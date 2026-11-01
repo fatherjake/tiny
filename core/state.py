@@ -210,6 +210,7 @@ class State:
         if body.trader != signer or not releasable(body.dest_chain, body.dest_address, body.amount):
             return
         account = self.accounts[signer]
+        self._settle_account(account)
         if body.amount > self._free_collateral(signer):
             return
         account.collateral -= body.amount
@@ -291,10 +292,12 @@ class State:
                 self.mark_prices[market] = mid
 
     def apply_funding(self, timestamp_ms: int) -> None:
-        """Longs pay the mark-oracle premium for the time since the previous block.
+        """Accrue the mark-oracle premium into the funding index. Positions settle on touch.
 
-        Over one hour the payment on one unit is exactly `mark - oracle`. The first block
-        only starts the clock, and a timestamp that does not move forward is ignored.
+        Over one hour one unit pays exactly `mark - oracle`. The first block only starts
+        the clock, and a timestamp that does not move forward is ignored. `margin` counts
+        funding that has accrued but not settled. A fill, withdraw, or liquidation writes it
+        into collateral.
         """
         if self.last_funding_ms is None:
             self.last_funding_ms = timestamp_ms
@@ -309,10 +312,23 @@ class State:
             if oracle is None or mark is None:
                 continue
             self.funding_index[market] += (mark - oracle) * elapsed // HOUR_MS
-        for trader in sorted(self.accounts):
-            account = self.accounts[trader]
-            for market in sorted(account.positions):
-                self._collect_funding(account, market)
+
+    def funding_payment(self, account: Account) -> int:
+        """USDC still to subtract from collateral for funding since the last settlement."""
+        payment = 0
+        for market in sorted(account.positions):
+            pos = account.positions[market]
+            if pos.size == 0:
+                continue
+            delta = self.funding_index[market] - pos.funding_index
+            if delta == 0:
+                continue
+            payment += pos.size * delta // SIZE_SCALE
+        return payment
+
+    def _settle_account(self, account: Account) -> None:
+        for market in sorted(account.positions):
+            self._collect_funding(account, market)
 
     def _collect_funding(self, account: Account, market: str) -> None:
         pos = account.positions.get(market)
@@ -329,7 +345,7 @@ class State:
         account = self.accounts.get(trader)
         if account is None:
             return 0, 0
-        value = account.collateral
+        value = account.collateral - self.funding_payment(account)
         required = 0
         for market in sorted(account.positions):
             pos = account.positions[market]
@@ -378,6 +394,7 @@ class State:
             price = mark * band // 10_000
             if price <= 0:
                 continue
+            self._settle_account(account)
             order = Order(
                 id=self._take_order_id(market),
                 trader=trader,

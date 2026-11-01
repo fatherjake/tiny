@@ -3,8 +3,21 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from core.api import parse_tx
-from core.types import Deposit, OrderType, PlaceOrder, SetOraclePrice, Side, Withdraw
+from core.api import create_app, parse_tx
+from core.types import (
+    PRICE_SCALE,
+    SIZE_SCALE,
+    USDC_SCALE,
+    Account,
+    Deposit,
+    OrderType,
+    PlaceOrder,
+    Position,
+    SetOraclePrice,
+    Side,
+    Withdraw,
+)
+from tests.test_node import make_node
 
 
 def tx_json(body: dict[str, object], nonce: object = 1, sig: str = "ab") -> str:
@@ -72,3 +85,31 @@ def test_parse_nested_bytes_and_int_keys() -> None:
 def test_parse_rejects_bad_json(raw: str) -> None:
     with pytest.raises(ValidationError):
         parse_tx(raw)
+
+
+def test_account_reports_unsettled_funding_and_leaves_state_unchanged() -> None:
+    node, _transport = make_node()
+    trader = "alice"
+    node.state.accounts[trader] = Account(
+        trader,
+        collateral=1_000 * USDC_SCALE,
+        positions={
+            "BTC-PERP": Position("BTC-PERP", size=SIZE_SCALE, entry_notional=50_000 * USDC_SCALE)
+        },
+    )
+    node.state.funding_index["BTC-PERP"] = 1_000 * PRICE_SCALE
+    node.state.mark_prices["BTC-PERP"] = 50_000 * PRICE_SCALE
+    root = node.state.state_root()
+    app = create_app(node)
+    account = next(
+        route.endpoint
+        for route in app.routes
+        if getattr(route, "path", None) == "/account/{trader}"
+    )
+    body = account(trader)
+    assert body["collateral"] == 0
+    assert body["account_value"] == 0
+    assert body["positions"]["BTC-PERP"]["funding_index"] == 1_000 * PRICE_SCALE
+    assert node.state.accounts[trader].collateral == 1_000 * USDC_SCALE
+    assert node.state.accounts[trader].positions["BTC-PERP"].funding_index == 0
+    assert node.state.state_root() == root
