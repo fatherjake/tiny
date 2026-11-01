@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {BridgeInbox, IERC20} from "../src/BridgeInbox.sol";
+import {BridgeInbox} from "../src/BridgeInbox.sol";
+import {IBridgeInbox} from "../src/IBridgeInbox.sol";
+import {IERC20} from "../src/IERC20.sol";
 
 interface Vm {
     function prank(address msgSender) external;
@@ -69,6 +71,7 @@ contract BridgeInboxTest {
     error Proof();
     error SealedTwice();
     error TookTokens();
+    error Full();
     error ReleasedTwice();
     error ReleasedWithBadSig();
 
@@ -103,8 +106,8 @@ contract BridgeInboxTest {
         bytes32 sender = bytes32(uint256(uint160(ALICE)));
         bytes32 leaf0 = inbox.messageLeaf(1, 4, 0, sender, RECIPIENT, 1_000_000);
         bytes32 leaf1 = inbox.messageLeaf(1, 4, 1, sender, RECIPIENT, 2_000_000);
-        bytes32[] memory siblings = inbox.proof(4, 1);
-        if (siblings.length != 1 || siblings[0] != leaf0) revert Proof();
+        bytes32[] memory siblings = new bytes32[](1);
+        siblings[0] = leaf0;
         if (!inbox.verify(leaf1, 1, siblings, root)) revert Proof();
         bytes32 leaf2 = inbox.messageLeaf(1, 4, 2, sender, RECIPIENT, 3_000_000);
         bytes32[] memory three = new bytes32[](3);
@@ -115,6 +118,30 @@ contract BridgeInboxTest {
         try inbox.seal(4) returns (bytes32, bytes32) {
             revert SealedTwice();
         } catch {}
+    }
+
+    function test_a_full_queue_seals_and_the_next_deposit_keeps_its_tokens() public {
+        uint256 n = inbox.MAX_PENDING();
+        _mintAndApprove(ALICE, n + 1);
+        bytes32 sender = bytes32(uint256(uint160(ALICE)));
+        bytes32[] memory leaves = new bytes32[](n);
+        for (uint256 i = 0; i < n; i++) {
+            vm.prank(ALICE);
+            inbox.deposit(1, RECIPIENT);
+            leaves[i] = inbox.messageLeaf(1, 4, uint64(i), sender, RECIPIENT, 1);
+        }
+        vm.prank(ALICE);
+        try inbox.deposit(1, RECIPIENT) {
+            revert TookTokens();
+        } catch {}
+        if (token.balanceOf(address(inbox)) != n) revert Balance(token.balanceOf(address(inbox)));
+        if (token.balanceOf(ALICE) != 1) revert Balance(token.balanceOf(ALICE));
+        if (inbox.nextNonce() != n) revert Full();
+        (bytes32 root,) = inbox.seal(4);
+        if (root != inbox.merkleRoot(leaves)) revert Root(root);
+        vm.prank(ALICE);
+        inbox.deposit(1, RECIPIENT);
+        if (token.balanceOf(address(inbox)) != n + 1) revert Balance(token.balanceOf(address(inbox)));
     }
 
     function test_deposit_without_approval_keeps_the_tokens() public {
@@ -144,7 +171,7 @@ contract BridgeInboxTest {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(ORACLE_KEY, digest);
         bytes32[] memory noSiblings = new bytes32[](0);
         inbox.release(
-            BridgeInbox.Withdrawal(blockHash, leaf, height, sender, recipient, amount, nonce, 0), noSiblings, v, r, s
+            IBridgeInbox.Withdrawal(blockHash, leaf, height, sender, recipient, amount, nonce, 0), noSiblings, v, r, s
         );
         if (token.balanceOf(bob) != 250_000) revert Balance(token.balanceOf(bob));
         if (token.balanceOf(address(inbox)) != 750_000) revert Balance(token.balanceOf(address(inbox)));
@@ -154,7 +181,7 @@ contract BridgeInboxTest {
         bytes32 otherDigest = sha256(abi.encodePacked(uint64(1), height, otherHash, otherLeaf));
         (uint8 bv, bytes32 br, bytes32 bs) = vm.sign(0xBEEF, otherDigest);
         try inbox.release(
-            BridgeInbox.Withdrawal(otherHash, otherLeaf, height, sender, recipient, amount, 3, 0),
+            IBridgeInbox.Withdrawal(otherHash, otherLeaf, height, sender, recipient, amount, 3, 0),
             noSiblings,
             bv,
             br,
@@ -163,7 +190,7 @@ contract BridgeInboxTest {
             revert ReleasedWithBadSig();
         } catch {}
         try inbox.release(
-            BridgeInbox.Withdrawal(blockHash, leaf, height, sender, recipient, amount, nonce, 0), noSiblings, v, r, s
+            IBridgeInbox.Withdrawal(blockHash, leaf, height, sender, recipient, amount, nonce, 0), noSiblings, v, r, s
         ) {
             revert ReleasedTwice();
         } catch {}
