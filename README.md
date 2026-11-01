@@ -30,4 +30,10 @@ Fault scenarios (crashes, partitions, lossy links) are pytest cases in `tests/te
 
 Always run modules from the repo root with `python -m core.<name>` or `python -m sim`. Running a file directly puts `core/` on the path and `types.py` shadows the standard library.
 
+## Networking notes
+
+Validator-to-validator messaging in `core/net.py` is plain TCP with length-prefixed JSON frames. It is not encrypted, and the `Hello` handshake is not authenticated: a peer is trusted to be whichever node id it claims. Safety rests on signatures above the transport (signed txs, validator-signed votes and QCs), so a fake peer cannot forge blocks, but it can read traffic, spam, or take a node's connection slot.
+
+If we ever need it, two upgrades fit behind the `Transport` interface without touching consensus or state: sign the `Hello` (each side signs a fresh challenge with its validator key) to stop impersonation, and wrap the streams in TLS or a Noise handshake (as libp2p does) for encryption.
+
 Agent setup (skills, MCP) comes from [agent-boilerplate-v2](https://github.com/fatherjake/agent-boilerplate-v2); see `.agents/BOILERPLATE.md`.
