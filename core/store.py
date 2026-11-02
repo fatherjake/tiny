@@ -101,7 +101,9 @@ def _page_fills(
         and (not trader or row["taker"] == trader or row["maker"] == trader)
         and _before_fill(row, before)
     ]
-    chosen.sort(key=lambda row: (int(row["height"]), int(row["tx_index"]), int(row["id"])), reverse=True)
+    chosen.sort(
+        key=lambda row: (int(row["height"]), int(row["tx_index"]), int(row["id"])), reverse=True
+    )
     return [dict(row) for row in chosen[:limit]]
 
 
@@ -142,7 +144,9 @@ def _candles(
 
 
 class Store(Protocol):
-    def append_block(self, block: Block, events: Sequence[Fill | OrderEvent | FundingEvent]) -> None: ...
+    def append_block(
+        self, block: Block, events: Sequence[Fill | OrderEvent | FundingEvent]
+    ) -> None: ...
 
     def recent_trades(self, market: str, limit: int, before: Cursor | None = None) -> list[Row]: ...
 
@@ -176,7 +180,9 @@ class MemoryStore:
         self._funding: list[Row] = []
         self._next_fill = 1
 
-    def append_block(self, block: Block, events: Sequence[Fill | OrderEvent | FundingEvent]) -> None:
+    def append_block(
+        self, block: Block, events: Sequence[Fill | OrderEvent | FundingEvent]
+    ) -> None:
         with self._lock:
             self._blocks.append(block)
             self._apply(events)
@@ -208,16 +214,12 @@ class MemoryStore:
             rows = [dict(row) for row in self._orders.values() if row["trader"] == trader]
         if before is not None:
             rows = [
-                row
-                for row in rows
-                if (int(row["updated_height"]), int(row["order_id"])) < before
+                row for row in rows if (int(row["updated_height"]), int(row["order_id"])) < before
             ]
         rows.sort(key=lambda row: (int(row["updated_height"]), int(row["order_id"])), reverse=True)
         return rows[:limit]
 
-    def candles(
-        self, market: str, interval: str, start: int | None, end: int | None
-    ) -> list[Row]:
+    def candles(self, market: str, interval: str, start: int | None, end: int | None) -> list[Row]:
         with self._lock:
             return _candles(self._fills, market, interval, start, end)
 
@@ -328,7 +330,9 @@ ORDER BY ts
 
 
 class SqliteStore:
-    def __init__(self, path: str | Path, markets: list[Market], validators: Iterable[str] = ()) -> None:
+    def __init__(
+        self, path: str | Path, markets: list[Market], validators: Iterable[str] = ()
+    ) -> None:
         self.path = str(Path(path).resolve())
         self.markets = list(markets)
         self.validators = set(validators)
@@ -345,7 +349,9 @@ class SqliteStore:
     def close(self) -> None:
         self._db.close()
 
-    def append_block(self, block: Block, events: Sequence[Fill | OrderEvent | FundingEvent]) -> None:
+    def append_block(
+        self, block: Block, events: Sequence[Fill | OrderEvent | FundingEvent]
+    ) -> None:
         with self._lock:
             self._db.execute("BEGIN IMMEDIATE")
             try:
@@ -386,9 +392,7 @@ class SqliteStore:
         """
         return self._rows(sql, (trader, height, height, order_id, limit))
 
-    def candles(
-        self, market: str, interval: str, start: int | None, end: int | None
-    ) -> list[Row]:
+    def candles(self, market: str, interval: str, start: int | None, end: int | None) -> list[Row]:
         width = INTERVALS.get(interval)
         if width is None:
             raise ValueError(f"unknown interval {interval!r}")
@@ -406,8 +410,7 @@ class SqliteStore:
     def rebuild_indexes(self) -> None:
         with self._lock:
             bodies = [
-                bytes(row[0])
-                for row in self._db.execute("SELECT body FROM blocks ORDER BY height")
+                bytes(row[0]) for row in self._db.execute("SELECT body FROM blocks ORDER BY height")
             ]
             blocks = [decode_block(body) for body in bodies]
             state = State(self.markets, self.validators)
@@ -481,7 +484,9 @@ class SqliteStore:
             else:
                 raise TypeError(f"unknown event {type(event).__name__}")
 
-    def _fills(self, where: str, args: tuple[object, ...], limit: int, before: Cursor | None) -> list[Row]:
+    def _fills(
+        self, where: str, args: tuple[object, ...], limit: int, before: Cursor | None
+    ) -> list[Row]:
         height, tx_index, row_id = (None, None, None) if before is None else before
         sql = f"""
             SELECT id, height, tx_index, market, price, size, taker, maker, side, liquidation, ts
