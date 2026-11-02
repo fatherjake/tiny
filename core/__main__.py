@@ -11,6 +11,7 @@ from pathlib import Path
 
 from core.net import TcpTransport
 from core.node import Node, public_key
+from core.store import SqliteStore
 from core.types import Market, NodeId
 
 
@@ -19,6 +20,9 @@ def main() -> None:
     parser.add_argument("--id", type=int, required=True)
     parser.add_argument("--config", required=True, help="cluster.json: validators and markets")
     parser.add_argument("--key-file", required=True, help="hex ed25519 private key for --id")
+    parser.add_argument(
+        "--db", default="", help="sqlite file for the block log and history indexes"
+    )
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     try:
@@ -32,11 +36,19 @@ def main() -> None:
         raise SystemExit(f"key file does not match validator {args.id}")
     others = {i: addr for i, addr in peers.items() if i != args.id}
     transport = TcpTransport(args.id, others, peers[args.id])
-    node = Node(args.id, len(peers), private_key, pubs, markets, transport)
+    store = None
+    if args.db:
+        validators = {pub.hex() for pub in pubs.values()}
+        validators.add(public_key(private_key).hex())
+        store = SqliteStore(args.db, markets, validators)
+    node = Node(args.id, len(peers), private_key, pubs, markets, transport, store=store)
     try:
         asyncio.run(_serve(node, transport))
     except KeyboardInterrupt:
         return
+    finally:
+        if isinstance(node.store, SqliteStore):
+            node.store.close()
 
 
 async def _serve(node: Node, transport: TcpTransport) -> None:

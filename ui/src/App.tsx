@@ -11,16 +11,20 @@ import { useWebSocket } from "./hooks/useWebSocket";
 import { TxError, generateKey, publicHex, readJson, secretFromHex, signAndPost } from "./lib/api";
 import { gridNote, marketPrice } from "./lib/orders";
 import { fmt, tryScaled, unscale } from "./lib/scale";
-import { remember, rememberPrint, seed } from "./lib/series";
+import { applyCandles, remember, rememberPrint, seed } from "./lib/series";
 import type {
   AccountView,
   BlockMsg,
   Depth,
+  FundingRow,
   MarketInfo,
   OpenOrder,
   OrderDraft,
   Series,
   Status,
+  StoredCandle,
+  StoredOrder,
+  StoredTrade,
   Trade,
 } from "./types";
 
@@ -30,6 +34,28 @@ type TraderKey = { secret: Uint8Array; trader: string };
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message || String(err) : String(err);
+}
+
+function asPrint(row: StoredTrade): Trade {
+  return {
+    seq: row.id,
+    height: row.height,
+    timestamp_ms: row.ts,
+    market: row.market,
+    side: row.side,
+    price: row.price,
+    size: row.size,
+  };
+}
+
+function asOpen(row: StoredOrder): OpenOrder {
+  return {
+    id: row.order_id,
+    market: row.market,
+    side: row.side,
+    price: row.price,
+    size: row.remaining,
+  };
 }
 
 export function App() {
@@ -45,7 +71,10 @@ export function App() {
   const [key, setKey] = useState<TraderKey | null>(null);
   const [keyError, setKeyError] = useState("");
   const [account, setAccount] = useState<AccountView | null>(null);
-  const [sent, setSent] = useState<OpenOrder[]>([]);
+  const [openOrders, setOpenOrders] = useState<OpenOrder[]>([]);
+  const [history, setHistory] = useState<StoredOrder[]>([]);
+  const [fills, setFills] = useState<StoredTrade[]>([]);
+  const [funding, setFunding] = useState<FundingRow[]>([]);
   const [form, setForm] = useState<OrderDraft>({
     side: "buy",
     type: "limit",
@@ -121,11 +150,29 @@ export function App() {
     if (!selected) return;
     let stop = false;
     const load = async (limit: number) => {
-      const res = await fetch("/trades?market=" + encodeURIComponent(selected) + "&limit=" + limit);
-      if (stop || !res.ok) return;
-      const rows = await readJson<Trade[]>(res);
-      setPrints(rows.slice(0, 40));
-      setSeries((prev) => ({ ...prev, [selected]: seed(prev[selected] || {}, rows) }));
+      const market = encodeURIComponent(selected);
+      const [tradeRes, candleRes, fundRes] = await Promise.all([
+        fetch("/trades/" + market + "?limit=" + limit),
+        fetch("/candles/" + market + "?interval=1m"),
+        fetch("/funding/" + market + "?limit=50"),
+      ]);
+      if (stop) return;
+      const rows = tradeRes.ok ? await readJson<StoredTrade[]>(tradeRes) : null;
+      const bars = candleRes.ok ? await readJson<StoredCandle[]>(candleRes) : null;
+      if (rows) setPrints(rows.slice(0, 40).map(asPrint));
+      if (rows || bars) {
+        setSeries((prev) => {
+          const current = bars ? applyCandles(prev[selected] || {}, bars) : prev[selected] || {};
+          const seeded = rows
+            ? seed(
+                current,
+                rows.map((row) => ({ timestamp_ms: row.ts, price: row.price })),
+              )
+            : current;
+          return { ...prev, [selected]: seeded };
+        });
+      }
+      if (fundRes.ok) setFunding(await readJson<FundingRow[]>(fundRes));
     };
     let id = 0;
     load(20000)
@@ -178,18 +225,47 @@ export function App() {
 
   useEffect(() => {
     localNonce.current = 0;
-    setSent([]);
+    setOpenOrders([]);
+    setHistory([]);
+    setFills([]);
     setAccount(null);
     setNote("");
     setBad(false);
     bumpNonce((n) => n + 1);
   }, [key]);
 
+  useEffect(() => {
+    if (!key) return;
+    let stop = false;
+    const tick = async () => {
+      const trader = encodeURIComponent(key.trader);
+      try {
+        const [openRes, histRes, fillRes] = await Promise.all([
+          fetch("/accounts/" + trader + "/orders?status=open"),
+          fetch("/accounts/" + trader + "/orders?status=history&limit=50"),
+          fetch("/accounts/" + trader + "/fills?limit=50"),
+        ]);
+        if (stop) return;
+        if (openRes.ok) setOpenOrders((await readJson<StoredOrder[]>(openRes)).map(asOpen));
+        if (histRes.ok) setHistory(await readJson<StoredOrder[]>(histRes));
+        if (fillRes.ok) setFills(await readJson<StoredTrade[]>(fillRes));
+      } catch {
+        /* keep the last rows */
+      }
+    };
+    void tick();
+    const id = setInterval(() => void tick(), 1000);
+    return () => {
+      stop = true;
+      clearInterval(id);
+    };
+  }, [key]);
+
   const patch = (part: Partial<OrderDraft>) => setForm((prev) => ({ ...prev, ...part }));
   const nonce = Math.max(localNonce.current, account?.nonce ?? 0) + 1;
   const market = markets.find((item) => item.name === selected) ?? null;
   const book = books[selected] ?? null;
-  const orders = Array.isArray(account?.orders) ? account.orders : sent;
+  const orders = openOrders;
 
   async function resyncNonce() {
     if (!key) return;
@@ -276,9 +352,6 @@ export function App() {
       localNonce.current = sentNonce;
       nextId.current = id + 1;
       bumpNonce((n) => n + 1);
-      if (form.type === "limit") {
-        setSent((xs) => [...xs, { id, market: selected, side: form.side, price, size }]);
-      }
       setBad(false);
       setNote("accepted nonce " + sentNonce);
     } catch (err) {
@@ -306,7 +379,6 @@ export function App() {
       await signAndPost(key.secret, body, sentNonce);
       localNonce.current = sentNonce;
       bumpNonce((n) => n + 1);
-      setSent((xs) => xs.filter((item) => !(item.market === order.market && item.id === order.id)));
       setBad(false);
       setNote("accepted nonce " + sentNonce);
     } catch (err) {
@@ -374,6 +446,9 @@ export function App() {
         onCancel={(order) => void onCancel(order)}
         prints={prints}
         blocks={feed}
+        fills={fills}
+        history={history}
+        funding={funding}
       />
     </div>
   );

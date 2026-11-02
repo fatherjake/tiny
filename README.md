@@ -12,6 +12,7 @@ A teaching-sized Hyperliquid in Python. Each chain component is one file in `cor
 | `core/state.py` | Deterministic state machine: accounts, positions, oracle prices, funding, liquidations |
 | `core/book.py` | Price-time priority order book |
 | `core/bridge.py` | On-chain side of a LayerZero v1 style bridge: stores oracle-posted headers, verifies relayer Merkle proofs |
+| `core/store.py` | Block log and query indexes for trades, orders and funding |
 | `core/api.py` | REST and WebSocket API |
 | `ui/` | Trading UI (Vite, TypeScript, React). `npm run dev` proxies the API |
 | `sim/` | Playground: a whole cluster in one process with bots (`bots.py`), a fake price feed (`feed.py`), an in-memory network with faults (`net.py`), the bridge's source chain, oracle and relayer (`bridge.py`) and the API |
@@ -31,6 +32,28 @@ uv run python -m core --id 0 --config cluster.json --key-file key.hex
 Fault scenarios (crashes, partitions, lossy links) are pytest cases in `tests/test_faults.py`. They are marked xfail until the components are built.
 
 Always run from the repo root. One validator is `python -m core`. A component module is `python -m core.<name>`, and the playground is `python -m sim`. Running a file directly puts `core/` on the path and `types.py` shadows the standard library.
+
+## Persistence
+
+Each commit appends the block and the events from applying it. The sim keeps that in a `MemoryStore`. A validator keeps it in SQLite when given `--db`:
+
+```
+uv run python -m core --id 0 --config cluster.json --key-file key.hex --db tiny.sqlite
+```
+
+The file has the block log plus three query tables, written in the same transaction:
+
+| Table | Rows |
+| --- | --- |
+| `fills` | trades, indexed by `(market, height)` and by taker and maker |
+| `orders` | one row per order id, upserted as it is placed, filled, partially filled, cancelled or rejected |
+| `funding` | the funding index and the rate added at that height |
+
+Candles (`1m`, `5m`, `1h`) are a query that buckets `fills` by timestamp. They are not stored.
+
+Consensus does not read these tables, and they are not part of `state_root`. `SqliteStore.rebuild_indexes()` drops them and replays the block log through a fresh `State`. An order id is the primary key, so reusing an id replaces the old row. A snapshot that skips blocks is not in the log, so a rebuild cannot see those blocks.
+
+The history routes read the store on their own connection: `GET /trades/{market}`, `/accounts/{addr}/fills`, `/accounts/{addr}/orders?status=open|history`, `/candles/{market}?interval=1m|5m|1h` and `/funding/{market}`.
 
 ## Networking notes
 

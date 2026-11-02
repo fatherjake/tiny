@@ -1,6 +1,8 @@
 """HTTP + WebSocket API in front of one validator.
 
 REST: POST /tx, GET /book/{market}, GET /account/{trader}, GET /markets, GET /trades, GET /status.
+History reads the store, not consensus state: GET /trades/{market}, /accounts/{addr}/fills,
+/accounts/{addr}/orders, /candles/{market}, /funding/{market}.
 WS:   /ws streams new committed blocks, book depth, and trades.
 
 JSON is untrusted. Pydantic decodes it straight into the dataclasses in core.types (strict: no
@@ -21,7 +23,32 @@ from core.node import Node
 from core.types import Account, Block, Market, Tx
 
 WS_INTERVAL_S = 0.25
+MAX_LIMIT = 500
 JSON_CONFIG = ConfigDict(strict=True, val_json_bytes="hex", ser_json_bytes="hex")
+
+
+def _limit(limit: int) -> int:
+    if limit < 1:
+        raise HTTPException(400, "limit must be positive")
+    return min(limit, MAX_LIMIT)
+
+
+def _fill_cursor(
+    height: int | None, tx_index: int | None, row_id: int | None
+) -> tuple[int, int, int] | None:
+    if height is None and tx_index is None and row_id is None:
+        return None
+    if height is None or tx_index is None or row_id is None:
+        raise HTTPException(400, "before_height, before_tx and before_id are set together")
+    return height, tx_index, row_id
+
+
+def _order_cursor(height: int | None, order_id: int | None) -> tuple[int, int] | None:
+    if height is None and order_id is None:
+        return None
+    if height is None or order_id is None:
+        raise HTTPException(400, "before_height and before_order are set together")
+    return height, order_id
 
 
 # RootModel wrappers carry the JSON config down into the plain dataclasses inside them.
@@ -127,6 +154,59 @@ def create_app(node: Node) -> FastAPI:
     def trades(market: str = "", limit: int = 40) -> list[dict[str, object]]:
         rows = [row for row in node.trades if not market or row["market"] == market]
         return list(reversed(rows[-limit:]))
+
+    @app.get("/trades/{market}")
+    def market_trades(
+        market: str,
+        limit: int = 40,
+        before_height: int | None = None,
+        before_tx: int | None = None,
+        before_id: int | None = None,
+    ) -> list[dict[str, object]]:
+        before = _fill_cursor(before_height, before_tx, before_id)
+        return node.store.recent_trades(market, _limit(limit), before)
+
+    @app.get("/accounts/{addr}/fills")
+    def account_fills(
+        addr: str,
+        limit: int = 40,
+        before_height: int | None = None,
+        before_tx: int | None = None,
+        before_id: int | None = None,
+    ) -> list[dict[str, object]]:
+        before = _fill_cursor(before_height, before_tx, before_id)
+        return node.store.trades_for(addr, _limit(limit), before)
+
+    @app.get("/accounts/{addr}/orders")
+    def account_orders(
+        addr: str,
+        status: str = "",
+        limit: int = 40,
+        before_height: int | None = None,
+        before_order: int | None = None,
+    ) -> list[dict[str, object]]:
+        if status == "open":
+            return node.store.open_orders(addr)
+        if status not in ("", "history"):
+            raise HTTPException(400, "status must be open or history")
+        before = _order_cursor(before_height, before_order)
+        return node.store.order_history(addr, _limit(limit), before)
+
+    @app.get("/candles/{market}")
+    def candles(
+        market: str,
+        interval: str = "1m",
+        start: int | None = None,
+        end: int | None = None,
+    ) -> list[dict[str, object]]:
+        try:
+            return node.store.candles(market, interval, start, end)
+        except ValueError as err:
+            raise HTTPException(400, str(err)) from err
+
+    @app.get("/funding/{market}")
+    def funding(market: str, limit: int = 40) -> list[dict[str, object]]:
+        return node.store.funding_history(market, _limit(limit))
 
     @app.websocket("/ws")
     async def stream(socket: WebSocket) -> None:
