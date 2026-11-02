@@ -2,6 +2,8 @@
 
 A teaching-sized Hyperliquid in Python. Chain components are one file each in `core/`, and none of them may reach 1,000 lines. The playground is `sim/`. The trading UI is `ui/`.
 
+![BTC-PERP trading screen: candles, order book, and order form](docs/ui.jpg)
+
 Run commands from the repo root. Use `python -m`, not a file path. Running a file directly puts `core/` on the path, and `types.py` shadows the standard library.
 
 ## Install
