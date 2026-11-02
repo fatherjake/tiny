@@ -11,7 +11,7 @@ import { useWebSocket } from "./hooks/useWebSocket";
 import { TxError, generateKey, publicHex, readJson, secretFromHex, signAndPost } from "./lib/api";
 import { gridNote, marketPrice } from "./lib/orders";
 import { fmt, tryScaled, unscale } from "./lib/scale";
-import { applyCandles, remember, rememberPrint, seed } from "./lib/series";
+import { applyCandles, rememberPrint, seed } from "./lib/series";
 import type {
   AccountView,
   BlockMsg,
@@ -34,6 +34,34 @@ type TraderKey = { secret: Uint8Array; trader: string };
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message || String(err) : String(err);
+}
+
+async function everyTrade(market: string): Promise<StoredTrade[] | null> {
+  const rows: StoredTrade[] = [];
+  let cursor: StoredTrade | null = null;
+  for (;;) {
+    const query = new URLSearchParams({ limit: "500" });
+    if (cursor) {
+      query.set("before_height", String(cursor.height));
+      query.set("before_tx", String(cursor.tx_index));
+      query.set("before_id", String(cursor.id));
+    }
+    const res = await fetch("/trades/" + market + "?" + query);
+    if (!res.ok) return rows.length ? rows : null;
+    const page = await readJson<StoredTrade[]>(res);
+    rows.push(...page);
+    if (page.length < 500) return rows;
+    const oldest = page[page.length - 1];
+    if (
+      cursor &&
+      cursor.id === oldest.id &&
+      cursor.height === oldest.height &&
+      cursor.tx_index === oldest.tx_index
+    ) {
+      return rows;
+    }
+    cursor = oldest;
+  }
 }
 
 function asPrint(row: StoredTrade): Trade {
@@ -102,7 +130,6 @@ export function App() {
         .catch(() => {});
     } else if (msg.type === "book") {
       setBooks((prev) => ({ ...prev, [msg.market]: msg }));
-      setSeries((prev) => remember(prev, msg.market, msg));
     } else if (msg.type === "trade") {
       setPrints((xs) => (xs.some((print) => print.seq === msg.seq) ? xs : [msg, ...xs].slice(0, 40)));
       setSeries((prev) => rememberPrint(prev, msg.market, msg));
@@ -149,24 +176,30 @@ export function App() {
   useEffect(() => {
     if (!selected) return;
     let stop = false;
-    const load = async (limit: number) => {
+    const load = async (scope: "all" | number) => {
       const market = encodeURIComponent(selected);
-      const [tradeRes, candleRes, fundRes] = await Promise.all([
-        fetch("/trades/" + market + "?limit=" + limit),
+      const tradePromise =
+        scope === "all"
+          ? everyTrade(market)
+          : fetch("/trades/" + market + "?limit=" + scope).then(async (res) =>
+              res.ok ? readJson<StoredTrade[]>(res) : null,
+            );
+      const [rows, minuteRes, fundRes] = await Promise.all([
+        tradePromise,
         fetch("/candles/" + market + "?interval=1m"),
         fetch("/funding/" + market + "?limit=50"),
       ]);
       if (stop) return;
-      const rows = tradeRes.ok ? await readJson<StoredTrade[]>(tradeRes) : null;
-      const bars = candleRes.ok ? await readJson<StoredCandle[]>(candleRes) : null;
+      const minutes = minuteRes.ok ? await readJson<StoredCandle[]>(minuteRes) : null;
       if (rows) setPrints(rows.slice(0, 40).map(asPrint));
-      if (rows || bars) {
+      if (rows || minutes) {
         setSeries((prev) => {
-          const current = bars ? applyCandles(prev[selected] || {}, bars) : prev[selected] || {};
+          let current = prev[selected] || {};
+          if (minutes) current = applyCandles(current, minutes);
           const seeded = rows
             ? seed(
                 current,
-                rows.map((row) => ({ timestamp_ms: row.ts, price: row.price })),
+                rows.map((row) => ({ height: row.height, price: row.price })),
               )
             : current;
           return { ...prev, [selected]: seeded };
@@ -175,14 +208,13 @@ export function App() {
       if (fundRes.ok) setFunding(await readJson<FundingRow[]>(fundRes));
     };
     let id = 0;
-    load(20000)
+    load("all")
       .then(async () => {
         if (stop) return;
         const res = await fetch("/book/" + encodeURIComponent(selected) + "?levels=20");
         if (stop || !res.ok) return;
         const book = await readJson<Depth>(res);
         setBooks((prev) => ({ ...prev, [selected]: book }));
-        setSeries((prev) => remember(prev, selected, book));
         if (!stop) {
           id = window.setInterval(() => {
             load(200).catch(() => {});

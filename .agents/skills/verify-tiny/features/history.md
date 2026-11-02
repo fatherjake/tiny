@@ -11,7 +11,7 @@ The dock and the chart read committed trades, orders, fills, candles, and fundin
 
 ## How to get to it (user POV)
 
-Start the sim, open the UI, pick BTC-PERP. The tape is the Trades tab on the ladder. The chart's 1m button shows candles. The bottom dock has orders, fills, history, and funding.
+Start the sim, open the UI, pick BTC-PERP. The tape is the Trades tab on the ladder. The chart's 1m button shows one candle per minute. The tick button plots one point per block. The bottom dock has orders, fills, history, and funding.
 
 ## Driving it with curl
 
@@ -19,4 +19,4 @@ See the parent skill. `GET /trades/BTC-PERP?limit=2` is the check that does not 
 
 ## Gotchas
 
-The sim clock is not the wall clock. Candle `ts` is milliseconds. The UI adds an offset before drawing. An empty market returns `[]`. `status` on orders is `open` or `history`.
+Block timestamps follow wall time while the sim process runs, continuing from the last stored block. Candle `ts` is milliseconds. The UI shifts that clock so the latest candle sits at the current time. An empty market returns `[]`. `status` on orders is `open` or `history`. The trade route returns at most 500 rows, so the chart pages with `before_height`, `before_tx`, and `before_id`.

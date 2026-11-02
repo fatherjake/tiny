@@ -140,6 +140,6 @@ export type FundingRow = {
 
 export type Series = {
   offset?: number;
-  sec?: LinePoint[];
+  ticks?: LinePoint[];
   bars?: Candle[];
 };

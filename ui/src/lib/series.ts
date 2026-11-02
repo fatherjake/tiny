@@ -19,38 +19,19 @@ export function spreadMid(book: Depth | null | undefined): Spread {
   return { spread, mid, pct };
 }
 
-type PriceSource = {
-  mark_price?: Scaled | null;
-  best_bid?: Scaled | null;
-  best_ask?: Scaled | null;
-  oracle_price?: Scaled | null;
-};
-
-function priceOf(src: PriceSource | null | undefined): Scaled | null {
-  if (!src) return null;
-  if (src.mark_price != null) return src.mark_price;
-  if (src.best_bid != null && src.best_ask != null) return (bi(src.best_bid) + bi(src.best_ask)) / 2n;
-  return src.best_bid ?? src.best_ask ?? src.oracle_price ?? null;
-}
-
 function lastOf<T>(rows: T[]): T | undefined {
   return rows.length === 0 ? undefined : rows[rows.length - 1];
 }
 
-function note(book: Series, price: Scaled, at?: Scaled | null): Series {
+function noteBlock(book: Series, price: Scaled, height: number): Series {
+  const ticks = book.ticks ?? [];
+  const last = lastOf(ticks);
+  if (last && height < last.time) return book;
   const value = Number(bi(price)) / 1e6;
-  const sec = book.sec ?? [];
-  const lastS = lastOf(sec);
-  const offset = book.offset;
-  if (at != null && offset == null) return book;
-  const stamped =
-    at != null && offset != null && Number(at) > 0 ? Math.floor(Number(at) / 1000) + offset : null;
-  const time = stamped == null ? (lastS ? lastS.time : null) : stamped;
-  if (time == null || (lastS && time < lastS.time)) return book;
-  const nextSec = (lastS && lastS.time === time ? sec.slice(0, -1) : sec)
-    .concat([{ time, value }])
-    .slice(-180);
-  return { ...book, offset, sec: nextSec };
+  const next = (last && last.time === height ? ticks.slice(0, -1) : ticks).concat([
+    { time: height, value },
+  ]);
+  return { ...book, ticks: next };
 }
 
 export type CandleRow = {
@@ -63,13 +44,12 @@ export type CandleRow = {
 
 export function applyCandles(book: Series, rows: CandleRow[]): Series {
   const ordered = [...rows].sort((a, b) => Number(a.ts) - Number(b.ts));
-  let max = 0;
-  for (const row of ordered) if (Number(row.ts) > max) max = Number(row.ts);
+  const latest = lastOf(ordered);
   const offset =
     book.offset != null
       ? book.offset
-      : max > 0
-        ? Math.floor(Date.now() / 1000) - Math.floor(max / 1000)
+      : latest != null
+        ? Math.floor(Date.now() / 1000) - Math.floor(Number(latest.ts) / 1000)
         : null;
   const bars: NonNullable<Series["bars"]> = [];
   for (const row of ordered) {
@@ -89,41 +69,22 @@ export function applyCandles(book: Series, rows: CandleRow[]): Series {
   return { ...book, offset: offset ?? book.offset, bars };
 }
 
-type SeedRow = { timestamp_ms?: Scaled | null; price?: Scaled | null };
+type SeedRow = { height: number; price?: Scaled | null };
 
 export function seed(book: Series, rows: SeedRow[]): Series {
-  let max = 0;
-  for (const row of rows) if (Number(row.timestamp_ms) > max) max = Number(row.timestamp_ms);
-  // Chain time starts at the sim clock. Shift it onto the wall clock so the axis reads as now.
-  let next =
-    book.offset != null
-      ? book
-      : {
-          ...book,
-          offset: max > 0 ? Math.floor(Date.now() / 1000) - Math.floor(max / 1000) : 0,
-        };
+  let next = book;
   for (let i = rows.length - 1; i >= 0; i--) {
     const row = rows[i];
-    if (row.price != null) next = note(next, row.price, row.timestamp_ms);
+    if (row.price != null) next = noteBlock(next, row.price, row.height);
   }
   return next;
-}
-
-export function remember(
-  series: Record<string, Series>,
-  market: string,
-  src: PriceSource,
-): Record<string, Series> {
-  const price = priceOf(src);
-  if (price == null) return series;
-  return { ...series, [market]: note(series[market] || {}, price) };
 }
 
 export function rememberPrint(
   series: Record<string, Series>,
   market: string,
-  trade: { price?: Scaled | null; timestamp_ms?: Scaled | null },
+  trade: { price?: Scaled | null; height?: number },
 ): Record<string, Series> {
-  if (trade.price == null) return series;
-  return { ...series, [market]: note(series[market] || {}, trade.price, trade.timestamp_ms) };
+  if (trade.price == null || trade.height == null) return series;
+  return { ...series, [market]: noteBlock(series[market] || {}, trade.price, trade.height) };
 }

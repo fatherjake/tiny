@@ -6,11 +6,14 @@ import {
   type IChartApi,
   type ISeriesApi,
   LineSeries,
+  type Time,
   type UTCTimestamp,
   createChart,
 } from "lightweight-charts";
 
 import type { Series } from "../types";
+
+type Span = "1m" | "tick";
 
 type Plot = {
   chart: IChartApi;
@@ -26,7 +29,10 @@ type Props = {
 export function Chart({ market, points }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const api = useRef<Plot | null>(null);
-  const [span, setSpan] = useState<"1m" | "1s">("1m");
+  const [span, setSpan] = useState<Span>("1m");
+  const spanRef = useRef(span);
+  const fitted = useRef<string | null>(null);
+  spanRef.current = span;
 
   useEffect(() => {
     const el = host.current;
@@ -41,6 +47,9 @@ export function Chart({ market, points }: Props) {
         fontSize: 12,
         attributionLogo: false,
       },
+      localization: {
+        timeFormatter: (time: Time) => axisLabel(spanRef.current, time),
+      },
       grid: {
         vertLines: { color: "rgba(0, 0, 0, 0.12)" },
         horzLines: { color: "rgba(0, 0, 0, 0.12)" },
@@ -52,6 +61,8 @@ export function Chart({ market, points }: Props) {
         secondsVisible: false,
         barSpacing: 12,
         rightOffset: 4,
+        tickMarkFormatter: (time: Time) =>
+          spanRef.current === "tick" ? axisLabel("tick", time) : null,
       },
       crosshair: {
         vertLine: { color: "#000", labelBackgroundColor: "#000" },
@@ -79,17 +90,24 @@ export function Chart({ market, points }: Props) {
   useEffect(() => {
     const plot = api.current;
     if (!plot) return;
-    const seconds = span === "1s";
-    plot.chart.applyOptions({ timeScale: { secondsVisible: seconds } });
-    // lightweight-charts brands unix seconds as UTCTimestamp.
+    const ticks = span === "tick";
+    const candles = points.bars;
+    const count = ticks ? (points.ticks?.length ?? 0) : (candles?.length ?? 0);
     plot.candles.setData(
-      seconds ? [] : (points.bars ?? []).map((bar) => ({ ...bar, time: bar.time as UTCTimestamp })),
+      ticks || !candles
+        ? []
+        : candles.map((bar) => ({ ...bar, time: bar.time as UTCTimestamp })),
     );
     plot.line.setData(
-      seconds
-        ? (points.sec ?? []).map((point) => ({ ...point, time: point.time as UTCTimestamp }))
+      ticks
+        ? (points.ticks ?? []).map((point) => ({ ...point, time: point.time as UTCTimestamp }))
         : [],
     );
+    const key = span + ":" + (count > 0);
+    if (fitted.current !== key) {
+      fitted.current = key;
+      if (count > 0) plot.chart.timeScale().fitContent();
+    }
   }, [points, span]);
 
   const shown = shownPrice(points, span);
@@ -100,8 +118,12 @@ export function Chart({ market, points }: Props) {
         <button type="button" className={span === "1m" ? "on" : ""} onClick={() => setSpan("1m")}>
           1m
         </button>
-        <button type="button" className={span === "1s" ? "on" : ""} onClick={() => setSpan("1s")}>
-          1s
+        <button
+          type="button"
+          className={span === "tick" ? "on" : ""}
+          onClick={() => setSpan("tick")}
+        >
+          tick
         </button>
         <span>{shown == null ? "no price" : shown.toFixed(6)}</span>
         <a href="https://www.tradingview.com/" target="_blank" rel="noreferrer">
@@ -113,9 +135,17 @@ export function Chart({ market, points }: Props) {
   );
 }
 
-function shownPrice(points: Series, span: "1m" | "1s"): number | null {
-  if (span === "1s") {
-    const rows = points.sec;
+function axisLabel(span: Span, time: Time): string {
+  if (typeof time !== "number") return "";
+  if (span === "tick") return String(time);
+  const date = new Date(time * 1000);
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return pad(date.getHours()) + ":" + pad(date.getMinutes());
+}
+
+function shownPrice(points: Series, span: Span): number | null {
+  if (span === "tick") {
+    const rows = points.ticks;
     const last = rows && rows.length > 0 ? rows[rows.length - 1] : undefined;
     return last ? last.value : null;
   }
