@@ -35,6 +35,8 @@ cd ui && npm run dev
 
 Vite serves the UI and proxies `/trades`, `/candles`, `/ws`, and the other API routes to port 8000. Open the URL it prints.
 
+To trade from a wallet, connect it and press `key from wallet`. The wallet signs a fixed message and its SHA-256 hash becomes your ed25519 trading key, so the same wallet always opens the same tiny account. Browser-extension wallets work as is. QR and mobile wallets need a WalletConnect project id in `VITE_WALLETCONNECT_PROJECT_ID`.
+
 ## Run the tests
 
 ```

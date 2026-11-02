@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useAccount, useSignMessage } from "wagmi";
 
 import { Chart } from "./components/Chart";
 import { Dock, type DockTab } from "./components/Dock";
@@ -9,8 +10,10 @@ import { OpenOrders } from "./components/OpenOrders";
 import { OrderForm } from "./components/OrderForm";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { TxError, generateKey, publicHex, readJson, secretFromHex, signAndPost } from "./lib/api";
+import { bytesToHex } from "./lib/encode";
 import { closeOrder, currentPrice, gridNote, marketPrice, outcome } from "./lib/orders";
 import { tryScaled, unscale, usd } from "./lib/scale";
+import { keyFromSignature, keyMessage } from "./lib/wallet";
 import { applyCandles, rememberPrint, seed } from "./lib/series";
 import type {
   AccountView,
@@ -128,6 +131,8 @@ export function App() {
   const [landed, setLanded] = useState(0);
   const lastLanded = useRef(0);
   const [, bumpNonce] = useState(0);
+  const { address: wallet } = useAccount();
+  const { signMessageAsync } = useSignMessage();
 
   const ws = useWebSocket("/ws", (msg) => {
     if (msg.type === "block") {
@@ -367,6 +372,22 @@ export function App() {
     }
   }
 
+  async function onWallet() {
+    if (!wallet) return;
+    const token = ++keyToken.current;
+    try {
+      const signature = await signMessageAsync({ message: keyMessage(wallet) });
+      const secret = await keyFromSignature(signature);
+      const trader = await publicHex(secret);
+      if (token !== keyToken.current) return;
+      setHex(bytesToHex(secret));
+      setKey({ secret, trader });
+      setKeyError("");
+    } catch (err) {
+      if (token === keyToken.current) setKeyError(errorMessage(err).split("\n")[0]);
+    }
+  }
+
   async function onGenerate() {
     const token = ++keyToken.current;
     const next = await generateKey();
@@ -511,6 +532,8 @@ export function App() {
           error={keyError}
           onHex={(value) => void onHex(value)}
           onGenerate={() => void onGenerate()}
+          wallet={wallet}
+          onWallet={() => void onWallet()}
         />
         <div className="pad">
           <b>account</b> {account ? "" : "none"}
