@@ -26,11 +26,15 @@ from core.types import (
     CancelOrder,
     Deposit,
     Fill,
+    FundingEvent,
     Hash,
     Market,
+    Match,
     MessageProof,
     OraclePrice,
     Order,
+    OrderEvent,
+    OrderKind,
     OrderType,
     PlaceOrder,
     Position,
@@ -86,7 +90,15 @@ class State:
         self.next_order_id = 1
         self.bridge = Bridge()
         self.withdrawal_nonce = 0
-        self.block_fills: list[Fill] = []
+        self.block_fills: list[Match] = []
+        self.record_events = True
+        self.events: list[Fill | OrderEvent | FundingEvent] = []
+        self._recording = False
+        self._height = 0
+        self._tx_index = -1
+        self._end_index = 0
+        self._ts = 0
+        self._liquidation = False
 
     def nonce(self, trader: str) -> int:
         """Last committed nonce; 0 for an account that has never sent a tx."""
@@ -101,13 +113,22 @@ class State:
         """
         assert block.height == self.height + 1, "block height must be the next height"
         self.block_fills = []
+        self.events = []
+        self._recording = self.record_events
+        self._height = block.height
+        self._ts = block.timestamp_ms
+        self._liquidation = False
+        self._end_index = len(block.txs)
+        self._tx_index = -1
         self._apply_txs(block.txs)
         self.update_oracle_prices()
         self.oracle_submissions.clear()
         self.oracle_voters.clear()
         self.update_mark_prices()
         self.apply_funding(block.timestamp_ms)
+        self._tx_index = self._end_index
         self.liquidate()
+        self._recording = False
         self.height = block.height
 
     def _apply_txs(self, txs: tuple[Tx, ...]) -> None:
@@ -118,10 +139,14 @@ class State:
         accepted: list[tuple[int, Tx]] = []
         for index, tx in enumerate(txs):
             if tx.nonce != self.nonce(tx.signer) + 1:
+                self._tx_index = index
+                if isinstance(tx.body, PlaceOrder):
+                    self._order_event(tx.body.order, "rejected", tx.body.order.size, "nonce")
                 continue
             self._account(tx.signer).nonce = tx.nonce
             accepted.append((index, tx))
-        for _, tx in sorted(accepted, key=lambda item: (_tx_class(item[1]), item[0])):
+        for index, tx in sorted(accepted, key=lambda item: (_tx_class(item[1]), item[0])):
+            self._tx_index = index
             self._apply_body(tx)
 
     def apply_tx(self, tx: Tx, timestamp_ms: int) -> None:
@@ -160,19 +185,91 @@ class State:
 
     def _place(self, signer: str, order: Order) -> None:
         market = self.markets.get(order.market)
-        if order.trader != signer or market is None or order.size <= 0:
+        if order.trader != signer:
+            self._order_event(order, "rejected", order.size, "signer", trader=signer)
+            return
+        if market is None:
+            self._order_event(order, "rejected", order.size, "market")
+            return
+        if order.size <= 0:
+            self._order_event(order, "rejected", order.size, "size")
             return
         off_tick = order.type == OrderType.LIMIT and (
             order.price <= 0 or order.price % market.tick_size != 0
         )
-        if off_tick or order.size % market.lot_size != 0:
+        if off_tick:
+            self._order_event(order, "rejected", order.size, "tick")
             return
+        if order.size % market.lot_size != 0:
+            self._order_event(order, "rejected", order.size, "lot")
+            return
+        if order.id in self.books[order.market].orders:
+            self._order_event(order, "rejected", order.size, "duplicate")
+            return
+        self._match(order)
+
+    def _match(self, order: Order) -> None:
         book = self.books[order.market]
-        if order.id in book.orders:
-            return
+        prior = dict(book.orders)
         fills = book.place(order, position_of=lambda trader: self._open_size(trader, order.market))
         for fill in fills:
             self.settle_fill(fill)
+        if not self._recording:
+            return
+        traded: dict[int, int] = {}
+        for fill in fills:
+            traded[fill.maker_order] = traded.get(fill.maker_order, 0) + fill.size
+        for maker_id, maker in prior.items():
+            if maker_id not in traded and maker_id in book.orders:
+                continue
+            if maker_id not in traded:
+                self._order_event(maker, "cancelled", 0, "reduce_only")
+                continue
+            resting = book.orders.get(maker_id)
+            remaining = resting.size if resting is not None else 0
+            kind: OrderKind = "filled" if remaining == 0 else "partial"
+            self._order_event(maker, kind, remaining, "")
+        taken = sum(fill.size for fill in fills if fill.taker_order == order.id)
+        resting_taker = book.orders.get(order.id)
+        if resting_taker is not None:
+            placed: OrderKind = "partial" if taken else "placed"
+            self._order_event(order, placed, resting_taker.size, "")
+            return
+        if taken <= 0:
+            self._order_event(order, "rejected", order.size, "unmatched")
+            return
+        if taken >= order.size:
+            self._order_event(order, "filled", 0, "")
+            return
+        self._order_event(order, "partial", 0, "unfilled")
+
+    def _order_event(
+        self,
+        order: Order,
+        kind: OrderKind,
+        remaining: int,
+        reason: str,
+        *,
+        trader: str | None = None,
+    ) -> None:
+        if not self._recording:
+            return
+        self.events.append(
+            OrderEvent(
+                self._height,
+                self._tx_index,
+                order.id,
+                order.trader if trader is None else trader,
+                order.market,
+                kind,
+                remaining,
+                reason,
+                order.side,
+                order.type,
+                order.price,
+                order.size,
+            )
+        )
 
     def _open_size(self, trader: str, market: str) -> int:
         account = self.accounts.get(trader)
@@ -191,6 +288,7 @@ class State:
         if order is None or order.trader != signer:
             return
         book.cancel(body.order_id)
+        self._order_event(order, "cancelled", 0, "")
 
     def _submit_oracle(self, signer: str, price: OraclePrice) -> None:
         if signer not in self.validators or signer in self.oracle_voters:
@@ -227,8 +325,23 @@ class State:
             )
         )
 
-    def settle_fill(self, fill: Fill) -> None:
+    def settle_fill(self, fill: Match) -> None:
         self.block_fills.append(fill)
+        if self._recording:
+            self.events.append(
+                Fill(
+                    self._height,
+                    self._tx_index,
+                    fill.market,
+                    fill.price,
+                    fill.size,
+                    fill.taker,
+                    fill.maker,
+                    fill.taker_side,
+                    self._liquidation,
+                    self._ts,
+                )
+            )
         maker_side = Side.SELL if fill.taker_side == Side.BUY else Side.BUY
         self._apply_fill(fill.maker, fill.market, maker_side, fill.price, fill.size, MAKER_FEE_BPS)
         self._apply_fill(
@@ -292,13 +405,6 @@ class State:
                 self.mark_prices[market] = mid
 
     def apply_funding(self, timestamp_ms: int) -> None:
-        """Accrue the mark-oracle premium into the funding index. Positions settle on touch.
-
-        Over one hour one unit pays exactly `mark - oracle`. The first block only starts
-        the clock, and a timestamp that does not move forward is ignored. `margin` counts
-        funding that has accrued but not settled. A fill, withdraw, or liquidation writes it
-        into collateral.
-        """
         if self.last_funding_ms is None:
             self.last_funding_ms = timestamp_ms
             return
@@ -311,7 +417,12 @@ class State:
             mark = self.mark_prices.get(market)
             if oracle is None or mark is None:
                 continue
-            self.funding_index[market] += (mark - oracle) * elapsed // HOUR_MS
+            rate = (mark - oracle) * elapsed // HOUR_MS
+            self.funding_index[market] += rate
+            if self._recording:
+                self.events.append(
+                    FundingEvent(self._height, market, self.funding_index[market], rate)
+                )
 
     def funding_payment(self, account: Account) -> int:
         """USDC still to subtract from collateral for funding since the last settlement."""
@@ -405,10 +516,9 @@ class State:
                 size=abs(pos.size),
                 reduce_only=True,
             )
-            book = self.books[market]
-            fills = book.place(order, position_of=lambda who, m=market: self._open_size(who, m))
-            for fill in fills:
-                self.settle_fill(fill)
+            self._liquidation = True
+            self._match(order)
+            self._liquidation = False
 
     def _take_order_id(self, market: str) -> int:
         book = self.books[market]

@@ -13,7 +13,7 @@ from collections import deque
 from collections.abc import Callable
 from dataclasses import replace
 
-from core.types import Fill, Order, OrderType, Side
+from core.types import Match, Order, OrderType, Side
 
 
 def reducible(position: int, side: Side) -> int:
@@ -32,7 +32,7 @@ class OrderBook:
         self.ask_prices: list[int] = []
         self.orders: dict[int, Order] = {}
 
-    def place(self, order: Order, position_of: Callable[[str], int] | None = None) -> list[Fill]:
+    def place(self, order: Order, position_of: Callable[[str], int] | None = None) -> list[Match]:
         """Match up to the order's price. Limit remainders rest; market orders never do."""
         if order.market != self.market or order.size <= 0 or order.id in self.orders:
             return []
@@ -41,7 +41,7 @@ class OrderBook:
         remaining = order.size
         if order.reduce_only:
             remaining = min(remaining, self._cap(order, position_of))
-        fills: list[Fill] = []
+        fills: list[Match] = []
         while remaining > 0:
             price = self._touch(order.side)
             if price is None:
@@ -59,7 +59,7 @@ class OrderBook:
                     continue
                 trade = min(remaining, cap)
                 fills.append(
-                    Fill(
+                    Match(
                         market=self.market,
                         maker_order=maker.id,
                         taker_order=order.id,
