@@ -35,7 +35,7 @@ Always run from the repo root. One validator is `python -m core`. A component mo
 
 ## Persistence
 
-Each commit appends the block and the events from applying it. The sim keeps that in a `MemoryStore`. A validator keeps it in SQLite when given `--db`:
+Each commit appends the block and the events from applying it. The sim writes node 0's log to `sim.sqlite` and replays it into every validator on startup, so the UI still has history after a restart. A standalone validator does the same when given `--db`:
 
 ```
 uv run python -m core --id 0 --config cluster.json --key-file key.hex --db tiny.sqlite
@@ -49,11 +49,11 @@ The file has the block log plus three query tables, written in the same transact
 | `orders` | one row per order id, upserted as it is placed, filled, partially filled, cancelled or rejected |
 | `funding` | the funding index and the rate added at that height |
 
-Candles (`1m`, `5m`, `1h`) are a query that buckets `fills` by timestamp. They are not stored.
+Candles (`1s`, `1m`, `5m`, `1h`) are a query that buckets `fills` by timestamp. They are not stored.
 
 Consensus does not read these tables, and they are not part of `state_root`. `SqliteStore.rebuild_indexes()` drops them and replays the block log through a fresh `State`. An order id is the primary key, so reusing an id replaces the old row. A snapshot that skips blocks is not in the log, so a rebuild cannot see those blocks.
 
-The history routes read the store on their own connection: `GET /trades/{market}`, `/accounts/{addr}/fills`, `/accounts/{addr}/orders?status=open|history`, `/candles/{market}?interval=1m|5m|1h` and `/funding/{market}`.
+The history routes read the store on their own connection: `GET /trades/{market}`, `/accounts/{addr}/fills`, `/accounts/{addr}/orders?status=open|history`, `/candles/{market}?interval=1s|1m|5m|1h` and `/funding/{market}`.
 
 ## Networking notes
 

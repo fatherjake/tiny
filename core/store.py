@@ -16,9 +16,9 @@ from urllib.request import pathname2url
 from pydantic import ConfigDict, RootModel
 
 from core.state import State
-from core.types import Block, Fill, FundingEvent, Market, OrderEvent
+from core.types import QC, Block, Fill, FundingEvent, Market, OrderEvent, encode
 
-INTERVALS = {"1m": 60_000, "5m": 300_000, "1h": 3_600_000}
+INTERVALS = {"1s": 1_000, "1m": 60_000, "5m": 300_000, "1h": 3_600_000}
 _JSON = ConfigDict(strict=True, val_json_bytes="hex", ser_json_bytes="hex")
 Row = dict[str, object]
 Cursor = tuple[int, int, int]
@@ -31,6 +31,14 @@ class _BlockJson(RootModel[Block]):
 
 def decode_block(data: bytes) -> Block:
     return _BlockJson.model_validate_json(data).root
+
+
+class _QcJson(RootModel[QC]):
+    model_config = _JSON
+
+
+def decode_qc(data: bytes) -> QC:
+    return _QcJson.model_validate_json(data).root
 
 
 def _fill_row(fill: Fill, row_id: int) -> Row:
@@ -145,8 +153,15 @@ def _candles(
 
 class Store(Protocol):
     def append_block(
-        self, block: Block, events: Sequence[Fill | OrderEvent | FundingEvent]
+        self,
+        block: Block,
+        events: Sequence[Fill | OrderEvent | FundingEvent],
+        qc: QC | None = None,
     ) -> None: ...
+
+    def committed_blocks(self) -> tuple[Block, ...]: ...
+
+    def tip_qc(self) -> QC | None: ...
 
     def recent_trades(self, market: str, limit: int, before: Cursor | None = None) -> list[Row]: ...
 
@@ -175,17 +190,30 @@ class MemoryStore:
         self.validators = set(validators)
         self._lock = threading.Lock()
         self._blocks: list[Block] = []
+        self._tip: QC | None = None
         self._fills: list[Row] = []
         self._orders: dict[int, Row] = {}
         self._funding: list[Row] = []
         self._next_fill = 1
 
     def append_block(
-        self, block: Block, events: Sequence[Fill | OrderEvent | FundingEvent]
+        self,
+        block: Block,
+        events: Sequence[Fill | OrderEvent | FundingEvent],
+        qc: QC | None = None,
     ) -> None:
         with self._lock:
             self._blocks.append(block)
+            if qc is not None:
+                self._tip = qc
             self._apply(events)
+
+    def committed_blocks(self) -> tuple[Block, ...]:
+        with self._lock:
+            return tuple(self._blocks)
+
+    def tip_qc(self) -> QC | None:
+        return self._tip
 
     def recent_trades(self, market: str, limit: int, before: Cursor | None = None) -> list[Row]:
         with self._lock:
@@ -300,6 +328,10 @@ CREATE TABLE IF NOT EXISTS funding (
     rate INTEGER NOT NULL,
     PRIMARY KEY (height, market)
 );
+CREATE TABLE IF NOT EXISTS tip (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    qc BLOB NOT NULL
+);
 """
 
 _STATEMENTS = [statement.strip() for statement in _SCHEMA.split(";") if statement.strip()]
@@ -350,7 +382,10 @@ class SqliteStore:
         self._db.close()
 
     def append_block(
-        self, block: Block, events: Sequence[Fill | OrderEvent | FundingEvent]
+        self,
+        block: Block,
+        events: Sequence[Fill | OrderEvent | FundingEvent],
+        qc: QC | None = None,
     ) -> None:
         with self._lock:
             self._db.execute("BEGIN IMMEDIATE")
@@ -359,11 +394,31 @@ class SqliteStore:
                     "INSERT INTO blocks (height, body) VALUES (?, ?)",
                     (block.height, block.to_bytes()),
                 )
+                if qc is not None:
+                    self._db.execute(
+                        """
+                        INSERT INTO tip (id, qc) VALUES (1, ?)
+                        ON CONFLICT(id) DO UPDATE SET qc = excluded.qc
+                        """,
+                        (encode(qc),),
+                    )
                 self._write_events(events)
                 self._db.execute("COMMIT")
             except Exception:
                 self._db.execute("ROLLBACK")
                 raise
+
+    def committed_blocks(self) -> tuple[Block, ...]:
+        with self._lock:
+            rows = self._db.execute("SELECT body FROM blocks ORDER BY height")
+            return tuple(decode_block(bytes(row[0])) for row in rows)
+
+    def tip_qc(self) -> QC | None:
+        with self._lock:
+            row = self._db.execute("SELECT qc FROM tip WHERE id = 1").fetchone()
+        if row is None:
+            return None
+        return decode_qc(bytes(row[0]))
 
     def recent_trades(self, market: str, limit: int, before: Cursor | None = None) -> list[Row]:
         return self._fills("market = ?", (market,), limit, before)

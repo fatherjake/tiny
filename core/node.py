@@ -1,14 +1,13 @@
-"""A validator: everything one participant runs, wired together.
+"""
+    A validator: everything one participant runs, wired together.
 
-    keypair -> signs votes, timeouts, proposals and oracle price txs
-    mempool -> pending txs, deduped by (signer, nonce); feeds proposals when this node leads
-    Consensus -> HotStuff (consensus.py); on_commit hands blocks to State
-    State   -> deterministic state machine (state.py); state_root() compared across nodes in tests
-    sync    -> snapshot plus block replay so a new or lagging node can catch up
-    price submitter -> each block, sign a SetOraclePrice tx from the price feed
-    transport -> net.py, in-memory or TCP
-
-Budget: < 1,000 lines.
+    keypair     -> signs stuff
+    mempool     -> pending txs, deduped by (signer, nonce)
+    Consensus   -> HotStuff on_commit hands blocks to State
+    State       -> deterministic state machine
+    sync        -> snapshot and block replay for catch up
+    price       -> every block sends a SetOraclePrice tx from the price feed
+    transport   -> in-memory or TCP
 """
 
 from __future__ import annotations
@@ -27,6 +26,7 @@ from core.net import Transport
 from core.state import State
 from core.store import MemoryStore, Store
 from core.types import (
+    QC,
     Block,
     Hash,
     Market,
@@ -293,7 +293,7 @@ class Node:
         if block.height <= self.state.height:
             return
         self.state.apply_block(block)
-        self.store.append_block(block, tuple(self.state.events))
+        self.store.append_block(block, tuple(self.state.events), self._qc_for(block))
         for fill in self.state.block_fills:
             self.trade_seq += 1
             self.trades.append(
@@ -315,6 +315,32 @@ class Node:
             self.latest_snapshot = Snapshot(block.height, self.state.to_bytes())
         if not self.catching_up:
             self.submit_prices()
+
+    def _qc_for(self, block: Block) -> QC | None:
+        found: QC | None = None
+        candidates = [item.qc for item in self.consensus.blocks.values()]
+        if self.consensus.high_qc is not None:
+            candidates.append(self.consensus.high_qc)
+        for qc in candidates:
+            if qc.block_hash != block.hash or not self.consensus.verify_qc(qc):
+                continue
+            if found is None or qc.view > found.view:
+                found = qc
+        return found
+
+    def resume(self, blocks: tuple[Block, ...], tip: QC) -> None:
+        for block in blocks:
+            self.state.apply_block(block)
+            self.by_height[block.height] = block
+            self.committed.append(block)
+            self.consensus.blocks[block.hash] = block
+        if not blocks:
+            return
+        self.consensus.b_exec = blocks[-1]
+        self.consensus.high_qc = tip
+        self.consensus.view = tip.view + 1
+        if tip.view > 0:
+            self.consensus.certified.add(tip.block_hash)
 
     def preview_root(self, block: Block) -> Hash | None:
         """State root after `block`, replaying any committed-but-not-yet-applied parents."""

@@ -1,15 +1,8 @@
-"""Chained HotStuff validators.
+"""
+    Chained HotStuff validators.
 
-Consensus only orders transactions. It never looks inside them: committed blocks are handed to
-the state machine (state.py), which every validator runs identically.
-
-Pieces:
-- Consensus: safe-to-vote rule, locking (b_lock), three-chain commit, vote collection into QCs.
-- Pacemaker: view timers, Timeout messages, TCs, jumping ahead on any newer QC or TC.
-- Leader rotation: round-robin on view.
-- Crypto: Ed25519 signatures over Block.to_bytes() / vote payloads.
-
-Budget: < 1,000 lines.
+    Consensus orders transactions. It never looks inside them.
+    Committed blocks are handed to the state machine
 """
 
 from __future__ import annotations
@@ -113,7 +106,8 @@ class Consensus:
         self._draining = False
 
     def start(self) -> None:
-        self.high_qc = QC(0, GENESIS, {})
+        if self.high_qc is None:
+            self.high_qc = QC(0, GENESIS, {})
         self._arm_timer()
         self._maybe_propose()
 

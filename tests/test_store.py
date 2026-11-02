@@ -142,6 +142,10 @@ def test_rebuild_matches_live_rows_and_a_reopen_keeps_them(tmp_path) -> None:
     assert sqlite.candles("BTC-PERP", "1h", None, None) == [
         {"ts": 0, "open": PX, "high": PX, "low": PX, "close": PX, "volume": 2 * ONE}
     ]
+    assert memory.candles("BTC-PERP", "1s", None, None) == [
+        {"ts": 1_000, "open": PX, "high": PX, "low": PX, "close": PX, "volume": ONE},
+        {"ts": 60_000, "open": PX, "high": PX, "low": PX, "close": PX, "volume": ONE},
+    ]
 
     memory.rebuild_indexes()
     sqlite.rebuild_indexes()
@@ -218,6 +222,6 @@ def test_unknown_candle_interval_is_rejected(tmp_path) -> None:
     try:
         for candidate in (store, memory):
             with pytest.raises(ValueError):
-                candidate.candles("BTC-PERP", "1s", None, None)
+                candidate.candles("BTC-PERP", "2s", None, None)
     finally:
         store.close()

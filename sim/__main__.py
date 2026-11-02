@@ -20,6 +20,7 @@ import uvicorn
 
 from core.api import create_app
 from core.node import Node, public_key
+from core.store import SqliteStore
 from core.types import PRICE_SCALE, USDC_SCALE, Market, Tx
 from sim.bots import Bot
 from sim.bridge import credit_accounts
@@ -45,14 +46,34 @@ def build(
     drop: float,
     seed: int,
     traders: int,
+    db: str | None = None,
 ) -> tuple[MemoryNetwork, list[Node], list[bytes]]:
     net = MemoryNetwork(n, delay_ms=delay_ms, drop=drop, seed=seed)
     keys = [(i + 1).to_bytes(32, "big") for i in range(n)]
     pubs = {i: public_key(key) for i, key in enumerate(keys)}
     feed = FakePriceFeed({MARKET.name: START_PRICE}, seed=seed)
-    nodes = [Node(i, n, keys[i], pubs, [MARKET], net.endpoint(i), feed.tick) for i in range(n)]
+    validators = {pub.hex() for pub in pubs.values()}
+    nodes = [
+        Node(
+            i,
+            n,
+            keys[i],
+            pubs,
+            [MARKET],
+            net.endpoint(i),
+            feed.tick,
+            SqliteStore(db, [MARKET], validators) if db and i == 0 else None,
+        )
+        for i in range(n)
+    ]
     funded = [demo_key(i) for i in range(traders)]
     credit_accounts(nodes, funded, MOCK_COLLATERAL)
+    if db:
+        saved = nodes[0].store.committed_blocks()
+        tip = nodes[0].store.tip_qc()
+        if saved and tip is not None and tip.block_hash == saved[-1].hash:
+            for node in nodes:
+                node.resume(saved, tip)
     for node in nodes:
         node.start()
     return net, nodes, funded
@@ -75,6 +96,22 @@ def drive(
         time.sleep(PACE_MS / 1000)
 
 
+def wall_clock(nodes: list[Node]) -> None:
+    """Stamp new blocks with wall time, continuing from the last committed block.
+
+    The network's virtual clock still paces votes. Block time is what the chart and funding read.
+    """
+    tip = nodes[0].by_height.get(nodes[0].state.height)
+    base = 0 if tip is None else tip.timestamp_ms
+    started = time.monotonic()
+
+    def now_ms() -> int:
+        return base + int((time.monotonic() - started) * 1000)
+
+    for node in nodes:
+        node.consensus.now_ms = now_ms
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run a tiny cluster")
     parser.add_argument("--validators", type=int, default=4)
@@ -83,11 +120,18 @@ def main() -> None:
     parser.add_argument("--drop", type=float, default=0.0)
     parser.add_argument("--bots", type=int, default=100)
     parser.add_argument("--api-port", type=int, default=8000)
+    parser.add_argument("--db", default="sim.sqlite", help="sqlite file for node 0's block log")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     net, nodes, funded = build(
-        args.validators, (args.delay_ms[0], args.delay_ms[1]), args.drop, seed=0, traders=args.bots
+        args.validators,
+        (args.delay_ms[0], args.delay_ms[1]),
+        args.drop,
+        seed=0,
+        traders=args.bots,
+        db=args.db or None,
     )
+    wall_clock(nodes)
     for node_id in args.kill:
         net.kill(node_id)
     # The API thread submits while the pump thread applies blocks. One lock, re-entered
