@@ -94,6 +94,50 @@ export type OrderDraft = {
 export type LinePoint = { time: number; value: number };
 export type Candle = { time: number; open: number; high: number; low: number; close: number };
 
+export type StoredTrade = {
+  id: number;
+  height: number;
+  tx_index: number;
+  market: string;
+  price: Scaled;
+  size: Scaled;
+  taker: string;
+  maker: string;
+  side: "buy" | "sell";
+  liquidation: boolean;
+  ts: number;
+};
+
+export type StoredOrder = {
+  order_id: number;
+  trader: string;
+  market: string;
+  side: "buy" | "sell";
+  type: string;
+  price: Scaled;
+  size: Scaled;
+  remaining: Scaled;
+  status: string;
+  created_height: number;
+  updated_height: number;
+};
+
+export type StoredCandle = {
+  ts: number;
+  open: Scaled;
+  high: Scaled;
+  low: Scaled;
+  close: Scaled;
+  volume?: Scaled;
+};
+
+export type FundingRow = {
+  height: number;
+  market: string;
+  index: Scaled;
+  rate: Scaled;
+};
+
 export type Series = {
   offset?: number;
   sec?: LinePoint[];
