@@ -25,6 +25,7 @@ from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from core.consensus import GENESIS, Consensus
 from core.net import Transport
 from core.state import State
+from core.store import MemoryStore, Store
 from core.types import (
     Block,
     Hash,
@@ -179,6 +180,7 @@ class Node:
         markets: list[Market],
         transport: Transport,
         price_feed: Callable[[], dict[str, int]] | None = None,
+        store: Store | None = None,
     ) -> None:
         self.id = node_id
         self.private_key = private_key
@@ -192,6 +194,7 @@ class Node:
         if not validators or node_id in validator_pubkeys:
             validators.add(own)
         self.state = State(markets, validators)
+        self.store = store if store is not None else MemoryStore(markets, validators)
         self.committed: list[Block] = []
         self.by_height: dict[int, Block] = {}
         self.latest_snapshot: Snapshot | None = None
@@ -290,6 +293,7 @@ class Node:
         if block.height <= self.state.height:
             return
         self.state.apply_block(block)
+        self.store.append_block(block, tuple(self.state.events))
         for fill in self.state.block_fills:
             self.trade_seq += 1
             self.trades.append(
