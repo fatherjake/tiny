@@ -1,6 +1,6 @@
 # tiny
 
-A teaching-sized Hyperliquid in Python. Each chain component is one file in `core/`: consensus, the API, the book, and the rest. The goal is no component over 1,000 lines, and all of `core/` under 3,333. It is 3,879 lines today, so there is still pruning to do. The playground is `sim/`. The trading UI is `ui/`.
+A toy implementation of Hyperliquid (HyperCore) in Python. Each chain component is one file in `core/`: consensus, the API, the book, and the rest. The goal is no component over 1,000 lines, and all of `core/` under 3,333. It is 3,879 lines today, so there is still pruning to do. The playground is `sim/`. The trading UI is `ui/`.
 
 ![BTC-PERP trading screen: candles, order book, and order form](docs/ui.jpg)
 
