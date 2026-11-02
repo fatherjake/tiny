@@ -417,7 +417,8 @@ class Consensus:
     def _extends(self, block: Block, ancestor: Block) -> bool:
         current: Block | None = block
         for _ in range(self.n * 4 + len(self.blocks) + 2):
-            if current is None:
+            # Heights rise by one per block, so below the ancestor's height it can't be found.
+            if current is None or current.height < ancestor.height:
                 return False
             if current.hash == ancestor.hash:
                 return True
@@ -428,7 +429,11 @@ class Consensus:
         chain: list[Block] = []
         current: Block | None = block
         while current is not None:
-            if self.b_exec is not None and current.hash == self.b_exec.hash:
+            # At or below the executed height there is nothing left to commit: either it is
+            # b_exec, or an ancestor already committed, or a fork that never will be.
+            if self.b_exec is not None and current.height <= self.b_exec.height:
+                if current.hash != self.b_exec.hash:
+                    return
                 break
             chain.append(current)
             if current.parent == GENESIS:
