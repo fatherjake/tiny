@@ -1,5 +1,5 @@
-import { fmt } from "../lib/scale";
-import type { FundingRow, StoredOrder, StoredTrade } from "../types";
+import { fmt, pct, usd } from "../lib/scale";
+import type { FundingRow, MarketInfo, StoredOrder, StoredTrade } from "../types";
 
 export function OrderHistory({ orders }: { orders: StoredOrder[] }) {
   return (
@@ -23,9 +23,12 @@ export function OrderHistory({ orders }: { orders: StoredOrder[] }) {
                 <td className="l">{order.market}</td>
                 <td>{String(order.order_id)}</td>
                 <td>{order.side === "buy" ? "B" : "S"}</td>
-                <td>{fmt(order.price)}</td>
+                <td>{usd(order.price)}</td>
                 <td>{fmt(order.remaining)}</td>
-                <td className="l">{order.status}</td>
+                <td className="l">
+                  {order.status}
+                  {order.reason ? " (" + order.reason + ")" : ""}
+                </td>
               </tr>
             ))
           ) : (
@@ -61,7 +64,7 @@ export function Fills({ rows }: { rows: StoredTrade[] }) {
               <tr key={row.id}>
                 <td>{row.height}</td>
                 <td className={row.side === "buy" ? "bid" : "ask"}>{row.side}</td>
-                <td>{fmt(row.price)}</td>
+                <td>{usd(row.price)}</td>
                 <td>{fmt(row.size)}</td>
                 <td>{row.liquidation ? "yes" : ""}</td>
               </tr>
@@ -79,7 +82,7 @@ export function Fills({ rows }: { rows: StoredTrade[] }) {
   );
 }
 
-export function Funding({ rows }: { rows: FundingRow[] }) {
+export function Funding({ rows, markets }: { rows: FundingRow[]; markets: MarketInfo[] }) {
   return (
     <section className="pad grow">
       <b>funding</b>
@@ -96,8 +99,8 @@ export function Funding({ rows }: { rows: FundingRow[] }) {
             rows.map((row) => (
               <tr key={row.market + ":" + row.height}>
                 <td>{row.height}</td>
-                <td>{fmt(row.index)}</td>
-                <td>{fmt(row.rate)}</td>
+                <td>{usd(row.index)}</td>
+                <td>{pct(row.rate, markets.find((m) => m.name === row.market)?.oracle_price)}</td>
               </tr>
             ))
           ) : (

@@ -1,9 +1,10 @@
-import { SCALE, bi, fmt, fmtSign } from "../lib/scale";
+import { SCALE, bi, fmtSign, usd, usdSign } from "../lib/scale";
 import type { AccountView, MarketInfo, Position, Scaled } from "../types";
 
 type Props = {
   account: AccountView | null;
   markets: MarketInfo[];
+  onClose: (pos: Position) => void;
 };
 
 function entryPrice(pos: Position): bigint {
@@ -22,7 +23,7 @@ function upnl(pos: Position, mark: Scaled | null | undefined): bigint | null {
   return size > 0n ? notional - entry : entry - notional;
 }
 
-export function Account({ account, markets }: Props) {
+export function Account({ account, markets, onClose }: Props) {
   const positions = Object.values(account?.positions ?? {}).sort((a, b) =>
     String(a.market).localeCompare(String(b.market)),
   );
@@ -33,9 +34,9 @@ export function Account({ account, markets }: Props) {
   return (
     <section className="pad grow">
       <b>account</b> {account ? "" : "none"}
-      <div>collateral {fmt(account?.collateral ?? 0)}</div>
-      <div>account value {fmt(account?.account_value ?? 0)}</div>
-      <div>maintenance margin {fmt(account?.maintenance_margin ?? 0)}</div>
+      <div>collateral {usd(account?.collateral ?? 0)}</div>
+      <div>account value {usd(account?.account_value ?? 0)}</div>
+      <div>maintenance margin {usd(account?.maintenance_margin ?? 0)}</div>
       <table>
         <thead>
           <tr>
@@ -43,6 +44,7 @@ export function Account({ account, markets }: Props) {
             <td>size</td>
             <td>entry</td>
             <td>pnl</td>
+            <td></td>
           </tr>
         </thead>
         <tbody>
@@ -56,14 +58,19 @@ export function Account({ account, markets }: Props) {
                   <td>
                     {fmtSign(size)} {side}
                   </td>
-                  <td>{fmt(entryPrice(pos))}</td>
-                  <td>{fmtSign(upnl(pos, markOf(pos.market)))}</td>
+                  <td>{usd(entryPrice(pos))}</td>
+                  <td>{usdSign(upnl(pos, markOf(pos.market)))}</td>
+                  <td>
+                    <button type="button" onClick={() => onClose(pos)}>
+                      close
+                    </button>
+                  </td>
                 </tr>
               );
             })
           ) : (
             <tr>
-              <td className="l" colSpan={4}>
+              <td className="l" colSpan={5}>
                 none
               </td>
             </tr>

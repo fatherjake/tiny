@@ -57,3 +57,29 @@ export function short(value: unknown): string {
   if (value == null || value === "") return "-";
   return String(value).slice(0, 8);
 }
+
+export function pct(part: Scaled | null | undefined, whole: Scaled | null | undefined): string {
+  if (part == null || whole == null) return "-";
+  const den = bi(whole);
+  if (den === 0n) return "-";
+  const v = (bi(part) * 1_000_000n) / den;
+  const neg = v < 0n;
+  const a = neg ? -v : v;
+  return (neg ? "-" : "") + (a / 10_000n).toString() + "." + (a % 10_000n).toString().padStart(4, "0") + "%";
+}
+
+// Dollars: "$1,234.57", rounded half up to the cent.
+export function usd(n: Scaled | null | undefined | ""): string {
+  if (n == null || n === "") return "-";
+  const v = bi(n);
+  const neg = v < 0n;
+  const cents = ((neg ? -v : v) + SCALE / 200n) / (SCALE / 100n);
+  const whole = (cents / 100n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  const frac = (cents % 100n).toString().padStart(2, "0");
+  return (neg ? "-$" : "$") + whole + "." + frac;
+}
+
+export function usdSign(n: Scaled | null | undefined | ""): string {
+  if (n == null || n === "") return "-";
+  return bi(n) > 0n ? "+" + usd(n) : usd(n);
+}

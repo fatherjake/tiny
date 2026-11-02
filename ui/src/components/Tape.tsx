@@ -1,4 +1,4 @@
-import { fmt } from "../lib/scale";
+import { fmt, usd } from "../lib/scale";
 import type { Trade } from "../types";
 
 type Props = {
@@ -12,7 +12,7 @@ export function Tape({ prints, tint = false }: Props) {
       <td>{print.height}</td>
       <td className="l">{print.side}</td>
       <td className={tint ? (print.side === "buy" ? "bid" : "ask") : undefined}>
-        {fmt(print.price)}
+        {usd(print.price)}
       </td>
       <td>{fmt(print.size)}</td>
     </tr>

@@ -1,7 +1,7 @@
 import type { FormEvent } from "react";
 
 import { gridNote, marketPrice } from "../lib/orders";
-import { SCALE, bi, fmt, tryScaled } from "../lib/scale";
+import { SCALE, bi, tryScaled, usd } from "../lib/scale";
 import type { Depth, MarketInfo, OrderDraft, Scaled } from "../types";
 
 type Props = {
@@ -90,7 +90,7 @@ export function OrderForm({
         ) : (
           <>
             <span>{form.side === "buy" ? "max price" : "min price"}</span>
-            <span>{fmt(cap)}</span>
+            <span>{usd(cap)}</span>
           </>
         )}
       </div>
@@ -102,7 +102,7 @@ export function OrderForm({
         >
           reduce-only
         </button>
-        <span>notional {fmt(notional)}</span>
+        <span>notional {usd(notional)}</span>
       </div>
       <div>
         int size {size == null ? "-" : size.toString()} price {limitPx == null ? "-" : limitPx.toString()}{" "}
@@ -114,7 +114,7 @@ export function OrderForm({
         </span>
         <button type="submit">{pending ? "sending" : "place"}</button>
       </div>
-      {note ? <div className={bad ? "on" : ""}>{note}</div> : null}
+      {note ? <div className={bad ? "error" : ""}>{note}</div> : null}
     </form>
   );
 }
