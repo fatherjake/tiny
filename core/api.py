@@ -1,15 +1,18 @@
-"""HTTP + WebSocket API in front of one validator.
+"""
+    HTTP + WebSocket API
 
-REST: POST /tx, GET /book/{market}, GET /account/{trader}, GET /markets, GET /trades, GET /status.
-History reads the store, not consensus state: GET /trades/{market}, /accounts/{addr}/fills,
-/accounts/{addr}/orders, /candles/{market}, /funding/{market}.
-WS:   /ws streams new committed blocks, book depth, and trades.
-
-JSON is untrusted. Pydantic decodes it straight into the dataclasses in core.types (strict: no
-str -> int coercion), once, here; nothing past this file sees a dict. Bytes travel as hex strings,
-and each tx body says which variant it is with its `kind` tag.
-
-Budget: < 1,000 lines.
+    POST /tx                        -> accept a signed tx into the mempool
+    GET /book/{market}              -> bid and ask depth, with the oracle and mark
+    GET /account/{trader}           -> collateral, positions, value and maintenance margin
+    GET /markets                    -> each market's oracle, mark and funding index
+    GET /trades                     -> recent trades, newest first
+    GET /status                     -> height, view, tip, mempool size and state root
+    GET /trades/{market}            -> paged fills for one market
+    GET /accounts/{addr}/fills      -> paged fills for one account
+    GET /accounts/{addr}/orders     -> open orders, or paged order history
+    GET /candles/{market}           -> open, high, low, close and volume
+    GET /funding/{market}           -> recent funding index and rate
+    WS: /ws                         -> streams new committed blocks, book depth, and trades.
 """
 
 from __future__ import annotations

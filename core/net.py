@@ -1,11 +1,8 @@
-"""Transports. Nodes only see the Transport interface, so the same Node runs over TCP (one process
-per validator) or on sim.net.MemoryNetwork (sim and tests).
+"""
+    TCP Transport
 
-TCP frames are a 4-byte length plus JSON. The `kind` tag sits outside the message, so hashing a
-block is unchanged. The lower id dials, which gives each pair one connection. Votes are counted
-when they arrive, so a broadcast is also delivered locally, same as the in-memory network.
-
-Budget: < 1,000 lines.
+    node-to-node transport: it keeps a TCP connection open to every peer on the asyncio loop, redialling any that drop. 
+    Note: There's no encryption or peer authentication; the node only trusts what the message signatures prove.
 """
 
 from __future__ import annotations

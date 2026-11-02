@@ -1,17 +1,9 @@
-"""Bridge in the style of LayerZero v1: an oracle posts source-chain block headers and a separate
-relayer posts Merkle proofs of messages against them. A message is accepted only when its proof
-checks out against a header the oracle posted, so the oracle and relayer have to collude to forge
-a deposit.
+"""
+    Bridge in the style of LayerZero v1
+    An oracle posts source-chain block headers and a separate
+    relayer posts Merkle proofs of messages against them. 
 
-This file is the on-chain side only (called from state.py): store headers, verify proofs, dedupe
-nonces, credit deposits, queue withdrawals. The off-chain source chain, oracle and relayer live in
-sim/bridge.py. The source-chain inbox that locks the ERC20 is contracts/src/BridgeInbox.sol.
-
-A leaf is sha256(0x00 || abi.encodePacked(uint64, uint64, uint64, bytes32, bytes32, uint256)):
-chain, height, nonce, sender, recipient, amount. A branch is sha256(0x01 || left || right).
-An odd level duplicates its last node. BridgeInbox hashes that same layout.
-
-Budget: < 1,000 lines.
+    Smart contract piece is in contracts/src/BridgeInbox.sol.
 """
 
 from __future__ import annotations

@@ -1,9 +1,5 @@
-"""Central limit order book, one per market. Price-time priority.
-
-Pure and deterministic: given the same sequence of orders, every validator produces the same
-fills. Margin checks are not done here; state.py checks before calling in and settles fills after.
-
-Budget: < 1,000 lines.
+"""
+    CLOB, one per market. Price-time priority.
 """
 
 from __future__ import annotations

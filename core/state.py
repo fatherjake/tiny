@@ -1,11 +1,6 @@
-"""The deterministic state machine, applied block by block to committed blocks.
-
-Owns accounts, positions, order books, oracle prices, funding, liquidations and bridge credits.
-Oracle prices arrive as SetOraclePrice txs from validators; the median per market becomes the
-oracle price for that block.
-Rules: integers only, no wall clock (use block timestamps), no randomness, no I/O.
-
-Budget: < 1,000 lines.
+"""
+    The deterministic state machine, applied block by block to committed blocks.
+    Owns accounts, positions, order books, oracle prices, funding, liquidations and bridge credits.
 """
 
 from __future__ import annotations
