@@ -1,6 +1,6 @@
 # tiny
 
-A teaching-sized Hyperliquid in Python. Chain components are one file each in `core/`, and none of them may reach 1,000 lines. The playground is `sim/`. The trading UI is `ui/`.
+A teaching-sized Hyperliquid in Python. Each chain component is one file in `core/`: consensus, the API, the book, and the rest. The goal is no component over 1,000 lines, and all of `core/` under 3,333. It is 3,879 lines today, so there is still pruning to do. The playground is `sim/`. The trading UI is `ui/`.
 
 ![BTC-PERP trading screen: candles, order book, and order form](docs/ui.jpg)
 
@@ -92,7 +92,7 @@ For more validators, add ids `1..n-1` to `validators`, write one `keyN.hex` per 
 
 ## Core files
 
-Line counts from `uv run python scripts/check_loc.py`. Recount after edits. The limit is 1,000 lines per file.
+Line counts from `uv run python scripts/check_loc.py`. Recount after edits. Each file stays under 1,000 lines. The total should come down from 3,879 to under 3,333.
 
 | Lines | File | What it is |
 | ---: | --- | --- |
@@ -107,6 +107,7 @@ Line counts from `uv run python scripts/check_loc.py`. Recount after edits. The 
 | 719 | `core/state.py` | Accounts, positions, oracle prices, funding, liquidations |
 | 571 | `core/store.py` | Block log and indexes for trades, orders, and funding |
 | 348 | `core/types.py` | Shared data types only |
+| 3879 | total | Goal is under 3,333 |
 
 `sim/` and `tests/` have no line limit.
 
