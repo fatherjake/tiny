@@ -1,7 +1,7 @@
 """Query tables for the API. Consensus never reads them.
 
 A committed block and the events from applying it land in one transaction. Drop the
-tables and `rebuild_indexes` replays the block log through a fresh State.
+tables and `rebuild_indexes` replays the block log from genesis.
 """
 
 from __future__ import annotations
@@ -57,10 +57,10 @@ def _fill_row(fill: Fill, row_id: int) -> Row:
     }
 
 
-def _insert_order(orders: dict[int, Row], event: OrderEvent) -> None:
-    row = orders.get(event.order_id)
+def _insert_order(orders: dict[tuple[str, int], Row], event: OrderEvent) -> None:
+    row = orders.get((event.trader, event.order_id))
     if row is None:
-        orders[event.order_id] = {
+        orders[(event.trader, event.order_id)] = {
             "order_id": event.order_id,
             "trader": event.trader,
             "market": event.market,
@@ -70,13 +70,21 @@ def _insert_order(orders: dict[int, Row], event: OrderEvent) -> None:
             "size": event.size,
             "remaining": event.remaining_size,
             "status": event.kind,
+            "reason": event.reason,
             "created_height": event.height,
             "updated_height": event.height,
         }
         return
     row["remaining"] = event.remaining_size
     row["status"] = event.kind
+    row["reason"] = event.reason
     row["updated_height"] = event.height
+
+
+def _start(markets: list[Market], validators: set[str], genesis: State | None) -> State:
+    if genesis is None:
+        return State(markets, validators)
+    return State.from_bytes(genesis.to_bytes())
 
 
 def _funding_row(event: FundingEvent) -> Row:
@@ -182,7 +190,7 @@ class Store(Protocol):
 
     def funding_since(self, market: str, ts: int) -> Row | None: ...
 
-    def rebuild_indexes(self) -> None: ...
+    def rebuild_indexes(self, genesis: State | None = None) -> None: ...
 
 
 class MemoryStore:
@@ -195,7 +203,7 @@ class MemoryStore:
         self._blocks: list[Block] = []
         self._tip: QC | None = None
         self._fills: list[Row] = []
-        self._orders: dict[int, Row] = {}
+        self._orders: dict[tuple[str, int], Row] = {}
         self._funding: list[Row] = []
         self._next_fill = 1
 
@@ -265,11 +273,12 @@ class MemoryStore:
             rows = [row for row in self._funding if row["market"] == market and row["ts"] >= ts]
         return dict(rows[0]) if rows else None
 
-    def rebuild_indexes(self) -> None:
+    def rebuild_indexes(self, genesis: State | None = None) -> None:
+        """Replay the log. Pass `genesis` when balances were credited before block 1."""
         with self._lock:
             blocks = list(self._blocks)
             self._clear()
-            state = State(self.markets, self.validators)
+            state = _start(self.markets, self.validators, genesis)
             for block in blocks:
                 state.apply_block(block)
                 self._apply(state.events)
@@ -315,7 +324,7 @@ CREATE INDEX IF NOT EXISTS fills_market_height ON fills (market, height);
 CREATE INDEX IF NOT EXISTS fills_taker ON fills (taker);
 CREATE INDEX IF NOT EXISTS fills_maker ON fills (maker);
 CREATE TABLE IF NOT EXISTS orders (
-    order_id INTEGER PRIMARY KEY,
+    order_id INTEGER NOT NULL,
     trader TEXT NOT NULL,
     market TEXT NOT NULL,
     side TEXT NOT NULL,
@@ -324,8 +333,10 @@ CREATE TABLE IF NOT EXISTS orders (
     size INTEGER NOT NULL,
     remaining INTEGER NOT NULL,
     status TEXT NOT NULL,
+    reason TEXT NOT NULL,
     created_height INTEGER NOT NULL,
-    updated_height INTEGER NOT NULL
+    updated_height INTEGER NOT NULL,
+    PRIMARY KEY (trader, order_id)
 );
 CREATE INDEX IF NOT EXISTS orders_trader_status ON orders (trader, status);
 CREATE INDEX IF NOT EXISTS orders_market_status ON orders (market, status);
@@ -344,7 +355,7 @@ CREATE TABLE IF NOT EXISTS tip (
 );
 """
 
-_NEWEST_COLUMN = {"funding": "ts"}
+_NEWEST_COLUMN = {"orders": "reason", "funding": "ts"}
 
 _STATEMENTS = [statement.strip() for statement in _SCHEMA.split(";") if statement.strip()]
 
@@ -490,13 +501,14 @@ class SqliteStore:
         rows = self._rows(sql, (market, ts))
         return rows[0] if rows else None
 
-    def rebuild_indexes(self) -> None:
+    def rebuild_indexes(self, genesis: State | None = None) -> None:
+        """Replay the log. Pass `genesis` when balances were credited before block 1."""
         with self._lock:
             bodies = [
                 bytes(row[0]) for row in self._db.execute("SELECT body FROM blocks ORDER BY height")
             ]
             blocks = [decode_block(body) for body in bodies]
-            state = State(self.markets, self.validators)
+            state = _start(self.markets, self.validators, genesis)
             self._db.execute("BEGIN IMMEDIATE")
             try:
                 self._db.execute("DROP TABLE IF EXISTS fills")
@@ -538,11 +550,12 @@ class SqliteStore:
                     """
                     INSERT INTO orders (
                         order_id, trader, market, side, type, price, size, remaining, status,
-                        created_height, updated_height
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(order_id) DO UPDATE SET
+                        reason, created_height, updated_height
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(trader, order_id) DO UPDATE SET
                         remaining = excluded.remaining,
                         status = excluded.status,
+                        reason = excluded.reason,
                         updated_height = excluded.updated_height
                     """,
                     (
@@ -555,6 +568,7 @@ class SqliteStore:
                         event.size,
                         event.remaining_size,
                         event.kind,
+                        event.reason,
                         event.height,
                         event.height,
                     ),

@@ -48,8 +48,8 @@ def fills(state: State) -> list[Fill]:
 
 def test_a_partial_fill_then_a_full_fill_match_the_book() -> None:
     state = State([MARKET])
-    alice = fund(state, ALICE, 1_000 * USDC_SCALE)
-    bob = fund(state, BOB, 1_000 * USDC_SCALE)
+    alice = fund(state, ALICE, 20_000 * USDC_SCALE)
+    bob = fund(state, BOB, 20_000 * USDC_SCALE)
     state.apply_block(block(1, place(ALICE, 1, 1, Side.SELL, PX, 2 * ONE), timestamp_ms=1_000))
     assert fills(state) == []
     assert orders(state) == [
@@ -79,7 +79,7 @@ def test_a_partial_fill_then_a_full_fill_match_the_book() -> None:
 
 def test_a_cancel_removes_the_resting_order() -> None:
     state = State([MARKET])
-    alice = fund(state, ALICE, 1_000 * USDC_SCALE)
+    alice = fund(state, ALICE, 20_000 * USDC_SCALE)
     state.apply_block(block(1, place(ALICE, 1, 7, Side.BUY, PX, ONE), timestamp_ms=10))
     state.apply_block(
         block(2, sign_tx(ALICE, CancelOrder(alice, "BTC-PERP", 7), 2), timestamp_ms=20)
@@ -157,6 +157,8 @@ def test_an_off_tick_order_is_rejected_and_does_not_rest() -> None:
 
 def test_funding_events_use_the_block_timestamp() -> None:
     state = State([MARKET], validators={public_key(VALIDATOR).hex()})
+    fund(state, ALICE, USDC_SCALE)
+    fund(state, BOB, USDC_SCALE)
     state.apply_block(
         block(
             1,
@@ -176,8 +178,8 @@ def test_event_capture_does_not_change_the_state_root() -> None:
     def run(record: bool) -> State:
         state = State([MARKET])
         state.record_events = record
-        fund(state, ALICE, 1_000 * USDC_SCALE)
-        fund(state, BOB, 1_000 * USDC_SCALE)
+        fund(state, ALICE, 20_000 * USDC_SCALE)
+        fund(state, BOB, 20_000 * USDC_SCALE)
         state.apply_block(
             block(
                 1,
