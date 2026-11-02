@@ -8,11 +8,16 @@ from core.node import Node, public_key, sign_tx
 from core.types import SIZE_SCALE, CancelOrder, Order, OrderType, PlaceOrder, Side
 
 MIN_SIZE = SIZE_SCALE // 100  # 0.01
-MAX_SIZE = SIZE_SCALE // 2  # 0.50
+MAX_SIZE = SIZE_SCALE // 2  # 0.50, for quotes
+MAX_TAKE = SIZE_SCALE // 10  # 0.10, for market orders
 MIN_GAP_MS = 250
 MAX_GAP_MS = 900
 KEEP = 6
-MARKET_SLIPPAGE_BPS = 100
+# Quotes sit 1 to 10 bps from the oracle, and a taker never pays more than 10 bps past
+# the touch, so prints stay near fair value instead of sweeping a thin book.
+QUOTE_MIN_BPS = 1
+QUOTE_MAX_BPS = 10
+MARKET_SLIPPAGE_BPS = 10
 
 
 class Bot:
@@ -33,9 +38,10 @@ class Bot:
             return
         self._due = now_ms + self.rng.randrange(MIN_GAP_MS, MAX_GAP_MS + 1)
         state = node.state
-        mid = state.mark_prices.get(self.market)
+        # Quote around the oracle, the index the market should track, not the book's own mark.
+        mid = state.oracle_prices.get(self.market)
         if mid is None:
-            mid = state.oracle_prices.get(self.market)
+            mid = state.mark_prices.get(self.market)
         if mid is None or mid <= 0:
             return
         book = state.books.get(self.market)
@@ -52,7 +58,7 @@ class Bot:
             )
             price = touch * band // 10_000
             if price > 0:
-                self._place(node, side, OrderType.MARKET, price, self._size())
+                self._place(node, side, OrderType.MARKET, price, self._size(MAX_TAKE))
         if len(live) >= KEEP:
             order_id = live[0]
             self.resting.remove(order_id)
@@ -61,12 +67,13 @@ class Bot:
                 self.resting.insert(0, order_id)
             return
         side = Side.BUY if self.rng.randrange(2) == 0 else Side.SELL
-        offset = self.rng.randrange(1, max(2, mid // 200))
+        bps = self.rng.randrange(QUOTE_MIN_BPS, QUOTE_MAX_BPS + 1)
+        offset = max(1, mid * bps // 10_000)
         price = mid - offset if side == Side.BUY else mid + offset
-        self._place(node, side, OrderType.LIMIT, price, self._size())
+        self._place(node, side, OrderType.LIMIT, price, self._size(MAX_SIZE))
 
-    def _size(self) -> int:
-        return self.rng.randrange(MIN_SIZE, MAX_SIZE + 1)
+    def _size(self, most: int) -> int:
+        return self.rng.randrange(MIN_SIZE, most + 1)
 
     def _place(self, node: Node, side: Side, order_type: OrderType, price: int, size: int) -> None:
         order_id = self._next_id

@@ -51,7 +51,7 @@ def build(
     net = MemoryNetwork(n, delay_ms=delay_ms, drop=drop, seed=seed)
     keys = [(i + 1).to_bytes(32, "big") for i in range(n)]
     pubs = {i: public_key(key) for i, key in enumerate(keys)}
-    feed = FakePriceFeed({MARKET.name: START_PRICE}, seed=seed)
+    feed = FakePriceFeed({MARKET.name: START_PRICE}, clock=lambda: net.now, seed=seed)
     validators = {pub.hex() for pub in pubs.values()}
     nodes = [
         Node(

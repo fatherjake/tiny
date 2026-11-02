@@ -31,21 +31,23 @@ def test_bots_quote_both_sides_and_trade() -> None:
     assert [len(node.committed) for node in nodes] == [138, 138, 138, 138]
     assert len({node.state.state_root() for node in nodes}) == 1
     assert book.depth(2) == {
-        "bids": [(49_938_525_367, 129_050), (49_734_260_013, 250_964)],
-        "asks": [(50_056_622_280, 175_778), (50_282_307_926, 132_203)],
+        "bids": [(49_968_149_147, 382_377), (49_965_433_980, 187_867)],
+        "asks": [(50_009_984_426, 228_198), (50_012_624_670, 432_066)],
     }
-    assert nodes[0].state.accounts[public_key(keys[0]).hex()].collateral == 1_000_107_012_639
-    assert nodes[0].state.accounts[public_key(keys[1]).hex()].collateral == 999_777_172_763
+    assert nodes[0].state.accounts[public_key(keys[0]).hex()].collateral == 999_986_662_057
+    assert nodes[0].state.accounts[public_key(keys[1]).hex()].collateral == 999_978_511_643
     assert next(iter(nodes[0].trades)) == {
         "seq": 1,
         "height": 42,
         "timestamp_ms": nodes[0].by_height[42].timestamp_ms,
         "market": "BTC-PERP",
         "side": "buy",
-        "price": 50_217_026_939,
-        "size": 351_622,
+        "price": 50_028_634_410,
+        "size": 37_519,
     }
     assert list(nodes[0].trades) == list(nodes[1].trades)
+    oracle = nodes[0].state.oracle_prices["BTC-PERP"]
+    assert all(abs(t["price"] - oracle) * 1_000 < 3 * oracle for t in nodes[0].trades)
 
 
 def test_restart_keeps_node0_history_and_extends_the_chain(tmp_path) -> None:
