@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 slug: api-indexes
 created: 2026-11-02
 targets: [core, ui, tests]
