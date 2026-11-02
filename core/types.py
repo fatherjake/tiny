@@ -13,6 +13,8 @@ from dataclasses import dataclass, field, fields, is_dataclass
 from enum import Enum
 from typing import Literal
 
+OrderKind = Literal["placed", "filled", "partial", "cancelled", "rejected"]
+
 NodeId = int
 View = int
 Hash = bytes  # 32-byte SHA-256
@@ -167,7 +169,9 @@ class Order:
 
 
 @dataclass(frozen=True)
-class Fill:
+class Match:
+    """One price-time match from the book. The log record is `Fill`, which is not hashed."""
+
     market: str
     maker_order: int
     taker_order: int
@@ -176,6 +180,44 @@ class Fill:
     price: int
     size: int
     taker_side: Side
+
+
+@dataclass(frozen=True)
+class Fill:
+    height: int
+    tx_index: int
+    market: str
+    price: int
+    size: int
+    taker: str
+    maker: str
+    taker_side: Side
+    liquidation: bool
+    ts: int
+
+
+@dataclass(frozen=True)
+class OrderEvent:
+    height: int
+    tx_index: int
+    order_id: int
+    trader: str
+    market: str
+    kind: OrderKind
+    remaining_size: int
+    reason: str
+    side: Side
+    type: OrderType
+    price: int
+    size: int
+
+
+@dataclass(frozen=True)
+class FundingEvent:
+    height: int
+    market: str
+    index: int
+    rate: int
 
 
 @dataclass

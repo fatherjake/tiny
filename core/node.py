@@ -323,6 +323,7 @@ class Node:
         if chain is None:
             return None
         preview = State.from_bytes(self.state.to_bytes())
+        preview.record_events = False
         for item in chain:
             if item.height != preview.height + 1:
                 return None
