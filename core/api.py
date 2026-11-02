@@ -4,7 +4,7 @@
     POST /tx                        -> accept a signed tx into the mempool
     GET /book/{market}              -> bid and ask depth, with the oracle and mark
     GET /account/{trader}           -> collateral, positions, value and maintenance margin
-    GET /markets                    -> each market's oracle, mark and funding index
+    GET /markets                    -> each market's oracle, mark, funding index and hour-old index
     GET /trades                     -> recent trades, newest first
     GET /status                     -> height, view, tip, mempool size and state root
     GET /trades/{market}            -> paged fills for one market
@@ -23,6 +23,7 @@ from fastapi import Body, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import ConfigDict, RootModel, ValidationError
 
 from core.node import Node
+from core.state import HOUR_MS
 from core.types import Account, Block, Market, Tx
 
 WS_INTERVAL_S = 0.25
@@ -115,12 +116,18 @@ def create_app(node: Node) -> FastAPI:
     @app.get("/markets")
     def markets() -> list[dict[str, object]]:
         state = node.state
+        now = state.last_funding_ms
         return [
             {
                 **MarketJson(market).model_dump(),
                 "oracle_price": state.oracle_prices.get(name),
                 "mark_price": state.mark_prices.get(name),
                 "funding_index": state.funding_index[name],
+                "funding_ts": now,
+                # The oldest funding row in the last hour, to average the rate over.
+                "funding_base": None
+                if now is None
+                else node.store.funding_since(name, now - HOUR_MS),
             }
             for name, market in sorted(state.markets.items())
         ]

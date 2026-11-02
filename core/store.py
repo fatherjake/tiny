@@ -85,6 +85,7 @@ def _funding_row(event: FundingEvent) -> Row:
         "market": event.market,
         "index": event.index,
         "rate": event.rate,
+        "ts": event.ts,
     }
 
 
@@ -179,6 +180,8 @@ class Store(Protocol):
 
     def funding_history(self, market: str, limit: int) -> list[Row]: ...
 
+    def funding_since(self, market: str, ts: int) -> Row | None: ...
+
     def rebuild_indexes(self) -> None: ...
 
 
@@ -257,6 +260,11 @@ class MemoryStore:
         rows.sort(key=lambda row: int(row["height"]), reverse=True)
         return rows[:limit]
 
+    def funding_since(self, market: str, ts: int) -> Row | None:
+        with self._lock:
+            rows = [row for row in self._funding if row["market"] == market and row["ts"] >= ts]
+        return dict(rows[0]) if rows else None
+
     def rebuild_indexes(self) -> None:
         with self._lock:
             blocks = list(self._blocks)
@@ -326,13 +334,17 @@ CREATE TABLE IF NOT EXISTS funding (
     market TEXT NOT NULL,
     "index" INTEGER NOT NULL,
     rate INTEGER NOT NULL,
+    ts INTEGER NOT NULL,
     PRIMARY KEY (height, market)
 );
+CREATE INDEX IF NOT EXISTS funding_market_ts ON funding (market, ts);
 CREATE TABLE IF NOT EXISTS tip (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     qc BLOB NOT NULL
 );
 """
+
+_NEWEST_COLUMN = {"funding": "ts"}
 
 _STATEMENTS = [statement.strip() for statement in _SCHEMA.split(";") if statement.strip()]
 
@@ -372,6 +384,12 @@ class SqliteStore:
         self._db = sqlite3.connect(self.path, isolation_level=None, check_same_thread=False)
         self._db.row_factory = sqlite3.Row
         self._db.execute("PRAGMA journal_mode=WAL")
+        # No migrations: an older file's blocks may not replay under today's rules.
+        for table, column in _NEWEST_COLUMN.items():
+            columns = [row[1] for row in self._db.execute(f"PRAGMA table_info({table})")]
+            if columns and column not in columns:
+                self._db.close()
+                raise RuntimeError(f"{self.path} is from an older version of tiny. Delete it.")
         self._ensure()
 
     def _ensure(self) -> None:
@@ -455,12 +473,22 @@ class SqliteStore:
 
     def funding_history(self, market: str, limit: int) -> list[Row]:
         sql = """
-            SELECT height, market, "index", rate FROM funding
+            SELECT height, market, "index", rate, ts FROM funding
             WHERE market = ?
             ORDER BY height DESC
             LIMIT ?
         """
         return self._rows(sql, (market, limit))
+
+    def funding_since(self, market: str, ts: int) -> Row | None:
+        sql = """
+            SELECT height, market, "index", rate, ts FROM funding
+            WHERE market = ? AND ts >= ?
+            ORDER BY ts
+            LIMIT 1
+        """
+        rows = self._rows(sql, (market, ts))
+        return rows[0] if rows else None
 
     def rebuild_indexes(self) -> None:
         with self._lock:
@@ -533,8 +561,8 @@ class SqliteStore:
                 )
             elif isinstance(event, FundingEvent):
                 self._db.execute(
-                    'INSERT INTO funding (height, market, "index", rate) VALUES (?, ?, ?, ?)',
-                    (event.height, event.market, event.index, event.rate),
+                    'INSERT INTO funding (height, market, "index", rate, ts) VALUES (?, ?, ?, ?, ?)',
+                    (event.height, event.market, event.index, event.rate, event.ts),
                 )
             else:
                 raise TypeError(f"unknown event {type(event).__name__}")

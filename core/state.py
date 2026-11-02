@@ -416,7 +416,9 @@ class State:
             self.funding_index[market] += rate
             if self._recording:
                 self.events.append(
-                    FundingEvent(self._height, market, self.funding_index[market], rate)
+                    FundingEvent(
+                        self._height, market, self.funding_index[market], rate, timestamp_ms
+                    )
                 )
 
     def funding_payment(self, account: Account) -> int:

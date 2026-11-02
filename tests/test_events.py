@@ -169,7 +169,7 @@ def test_funding_events_use_the_block_timestamp() -> None:
     assert [event for event in state.events if isinstance(event, FundingEvent)] == []
     assert state.mark_prices["BTC-PERP"] == 130
     state.apply_block(block(2, timestamp_ms=1_000 + HOUR_MS))
-    assert state.events == [FundingEvent(2, "BTC-PERP", 30, 30)]
+    assert state.events == [FundingEvent(2, "BTC-PERP", 30, 30, 1_000 + HOUR_MS)]
 
 
 def test_event_capture_does_not_change_the_state_root() -> None:

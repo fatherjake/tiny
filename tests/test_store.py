@@ -175,10 +175,12 @@ def test_funding_history_rebuilds_from_the_log(tmp_path) -> None:
     ]
     store = SqliteStore(tmp_path / "fund.sqlite", [MARKET], validators)
     _load(store, blocks)
-    history = [{"height": 2, "market": "BTC-PERP", "index": 30, "rate": 30}]
+    history = [{"height": 2, "market": "BTC-PERP", "index": 30, "rate": 30, "ts": 1_000 + HOUR_MS}]
     assert store.funding_history("BTC-PERP", 10) == history
     store.rebuild_indexes()
     assert store.funding_history("BTC-PERP", 10) == history
+    assert store.funding_since("BTC-PERP", 1_000) == history[0]
+    assert store.funding_since("BTC-PERP", 2_000 + HOUR_MS) is None
     store.close()
 
 
