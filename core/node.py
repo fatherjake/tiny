@@ -318,11 +318,13 @@ class Node:
 
     def _qc_for(self, block: Block) -> QC | None:
         found: QC | None = None
-        candidates = [item.qc for item in self.consensus.blocks.values()]
+        target = block.hash
+        # A QC for this block rides in each child, or is the current high QC.
+        candidates = [item.qc for item in self.consensus.blocks.values() if item.parent == target]
         if self.consensus.high_qc is not None:
             candidates.append(self.consensus.high_qc)
         for qc in candidates:
-            if qc.block_hash != block.hash or not self.consensus.verify_qc(qc):
+            if qc.block_hash != target or not self.consensus.verify_qc(qc):
                 continue
             if found is None or qc.view > found.view:
                 found = qc

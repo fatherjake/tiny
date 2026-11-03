@@ -9,6 +9,8 @@ export type MarketInfo = {
   oracle_price: Scaled | null;
   mark_price: Scaled | null;
   funding_index: Scaled | null;
+  funding_ts: number | null;
+  funding_base: FundingRow | null;
 };
 
 export type Level = [Scaled, Scaled];
@@ -86,7 +88,7 @@ export type AccountView = {
 export type OrderDraft = {
   side: "buy" | "sell";
   type: "limit" | "market";
-  size: string;
+  usd: string; // order size in dollars
   price: string;
   reduceOnly: boolean;
 };
@@ -118,6 +120,7 @@ export type StoredOrder = {
   size: Scaled;
   remaining: Scaled;
   status: string;
+  reason: string;
   created_height: number;
   updated_height: number;
 };
@@ -136,6 +139,7 @@ export type FundingRow = {
   market: string;
   index: Scaled;
   rate: Scaled;
+  ts: number;
 };
 
 export type Series = {

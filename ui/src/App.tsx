@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useAccount, useSignMessage } from "wagmi";
 
 import { Chart } from "./components/Chart";
 import { Dock, type DockTab } from "./components/Dock";
@@ -9,8 +10,10 @@ import { OpenOrders } from "./components/OpenOrders";
 import { OrderForm } from "./components/OrderForm";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { TxError, generateKey, publicHex, readJson, secretFromHex, signAndPost } from "./lib/api";
-import { gridNote, marketPrice } from "./lib/orders";
-import { fmt, tryScaled, unscale } from "./lib/scale";
+import { bytesToHex } from "./lib/encode";
+import { closeOrder, currentPrice, outcome } from "./lib/orders";
+import { unscale, usd } from "./lib/scale";
+import { keyFromSignature, keyMessage } from "./lib/wallet";
 import { applyCandles, rememberPrint, seed } from "./lib/series";
 import type {
   AccountView,
@@ -19,6 +22,7 @@ import type {
   FundingRow,
   MarketInfo,
   OpenOrder,
+  Position,
   OrderDraft,
   Series,
   Status,
@@ -28,9 +32,13 @@ import type {
   Trade,
 } from "./types";
 
+const REFRESH_MS = 250;
 const FEED_LIMIT = 50;
 
 type TraderKey = { secret: Uint8Array; trader: string };
+
+// Order ids are global on the chain, so start from the clock rather than 1.
+const firstOrderId = () => Date.now() * 1000;
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message || String(err) : String(err);
@@ -106,21 +114,33 @@ export function App() {
   const [form, setForm] = useState<OrderDraft>({
     side: "buy",
     type: "limit",
-    size: "1",
-    price: "100",
+    usd: "100",
+    price: "",
     reduceOnly: false,
   });
   const [note, setNote] = useState("");
   const [bad, setBad] = useState(false);
   const [pending, setPending] = useState(false);
   const localNonce = useRef(0);
-  const nextId = useRef(1);
+  const nextId = useRef(firstOrderId());
+  const awaiting = useRef<number | null>(null);
   const busy = useRef(false);
   const keyToken = useRef(0);
+  const pricedFor = useRef("");
+  // Bumped on new blocks, at most every REFRESH_MS, so account views refetch when one lands.
+  const [landed, setLanded] = useState(0);
+  const lastLanded = useRef(0);
   const [, bumpNonce] = useState(0);
+  const { address: wallet } = useAccount();
+  const { signMessageAsync } = useSignMessage();
 
   const ws = useWebSocket("/ws", (msg) => {
     if (msg.type === "block") {
+      const now = Date.now();
+      if (now - lastLanded.current >= REFRESH_MS) {
+        lastLanded.current = now;
+        setLanded((n) => n + 1);
+      }
       setFeed((xs) => [msg, ...xs].slice(0, FEED_LIMIT));
       setStatus((prev) => ({ ...(prev ?? {}), height: msg.height, view: msg.view, tip: msg.hash }));
       fetch("/markets")
@@ -253,7 +273,7 @@ export function App() {
       stop = true;
       clearInterval(id);
     };
-  }, [key]);
+  }, [key, landed]);
 
   useEffect(() => {
     localNonce.current = 0;
@@ -261,6 +281,7 @@ export function App() {
     setHistory([]);
     setFills([]);
     setAccount(null);
+    awaiting.current = null;
     setNote("");
     setBad(false);
     bumpNonce((n) => n + 1);
@@ -291,13 +312,28 @@ export function App() {
       stop = true;
       clearInterval(id);
     };
-  }, [key]);
+  }, [key, landed]);
+
+  useEffect(() => {
+    const row = history.find((item) => Number(item.order_id) === awaiting.current);
+    if (!row) return;
+    awaiting.current = null;
+    setBad(row.status === "rejected");
+    setNote(outcome(row));
+  }, [history]);
 
   const patch = (part: Partial<OrderDraft>) => setForm((prev) => ({ ...prev, ...part }));
   const nonce = Math.max(localNonce.current, account?.nonce ?? 0) + 1;
   const market = markets.find((item) => item.name === selected) ?? null;
   const book = books[selected] ?? null;
   const orders = openOrders;
+  const prefill = currentPrice(market);
+
+  useEffect(() => {
+    if (prefill == null || pricedFor.current === selected) return;
+    pricedFor.current = selected;
+    patch({ price: unscale(prefill) });
+  }, [selected, prefill]);
 
   async function resyncNonce() {
     if (!key) return;
@@ -336,6 +372,22 @@ export function App() {
     }
   }
 
+  async function onWallet() {
+    if (!wallet) return;
+    const token = ++keyToken.current;
+    try {
+      const signature = await signMessageAsync({ message: keyMessage(wallet) });
+      const secret = await keyFromSignature(signature);
+      const trader = await publicHex(secret);
+      if (token !== keyToken.current) return;
+      setHex(bytesToHex(secret));
+      setKey({ secret, trader });
+      setKeyError("");
+    } catch (err) {
+      if (token === keyToken.current) setKeyError(errorMessage(err).split("\n")[0]);
+    }
+  }
+
   async function onGenerate() {
     const token = ++keyToken.current;
     const next = await generateKey();
@@ -345,47 +397,67 @@ export function App() {
     setKeyError("");
   }
 
-  async function place() {
-    if (!key || !selected || busy.current) return;
-    const size = tryScaled(form.size);
-    const price = form.type === "market" ? marketPrice(form.side, book) : tryScaled(form.price);
-    if (size == null || price == null) {
+  // The form has already turned dollars into a base size on the lot and checked the margin.
+  async function place(size: bigint, price: bigint) {
+    if (!selected || busy.current) return;
+    if (!key) {
       setBad(true);
-      setNote(
-        form.type === "market" ? "no quote for a market order" : "size and price must be numbers",
-      );
+      setNote("enter or generate a private key first");
       return;
     }
-    if (gridNote(market, size, price, form.type)) return;
     if (size <= 0n || price <= 0n) {
       setBad(true);
       setNote("size and price must be positive");
       return;
     }
+    await sendOrder(key, {
+      market: selected,
+      side: form.side,
+      type: form.type,
+      price,
+      size,
+      reduce_only: form.reduceOnly,
+    });
+  }
+
+  async function onClose(pos: Position) {
+    if (!key || busy.current) return;
+    const order = closeOrder(pos, books[pos.market] ?? null);
+    if (!order) {
+      setBad(true);
+      setNote("no quote to close " + pos.market + " against");
+      return;
+    }
+    await sendOrder(key, { market: pos.market, type: "market", reduce_only: true, ...order });
+  }
+
+  async function sendOrder(
+    key: TraderKey,
+    order: {
+      market: string;
+      side: "buy" | "sell";
+      type: "limit" | "market";
+      price: bigint;
+      size: bigint;
+      reduce_only: boolean;
+    },
+  ) {
     busy.current = true;
     setPending(true);
     const sentNonce = Math.max(localNonce.current, account?.nonce ?? 0) + 1;
     const id = nextId.current;
     const body = {
       kind: "place_order" as const,
-      order: {
-        id,
-        trader: key.trader,
-        market: selected,
-        side: form.side,
-        type: form.type,
-        price,
-        size,
-        reduce_only: form.reduceOnly,
-      },
+      order: { id, trader: key.trader, ...order },
     };
     try {
       await signAndPost(key.secret, body, sentNonce);
       localNonce.current = sentNonce;
       nextId.current = id + 1;
+      awaiting.current = id;
       bumpNonce((n) => n + 1);
       setBad(false);
-      setNote("accepted nonce " + sentNonce);
+      setNote("order " + id + " sent, waiting for a block");
     } catch (err) {
       if (err instanceof TxError && err.status === 400) await resyncNonce();
       setBad(true);
@@ -439,6 +511,9 @@ export function App() {
         market={selected}
         book={book}
         prints={prints}
+        funding={funding}
+        markets={markets}
+        blocks={feed}
         onPrice={(px) => patch({ price: unscale(px), type: "limit" })}
       />
       <section className="side">
@@ -448,24 +523,29 @@ export function App() {
           error={keyError}
           onHex={(value) => void onHex(value)}
           onGenerate={() => void onGenerate()}
+          wallet={wallet}
+          onWallet={() => void onWallet()}
         />
         <div className="pad">
           <b>account</b> {account ? "" : "none"}
-          <div>collateral {fmt(account?.collateral ?? 0)}</div>
-          <div>value {fmt(account?.account_value ?? 0)}</div>
-          <div>margin {fmt(account?.maintenance_margin ?? 0)}</div>
+          <div>collateral {usd(account?.collateral ?? 0)}</div>
+          <div>value {usd(account?.account_value ?? 0)}</div>
+          <div>margin {usd(account?.maintenance_margin ?? 0)}</div>
         </div>
         <OrderForm
           form={form}
           patch={patch}
           market={market}
+          markets={markets}
           book={book}
+          account={account}
+          orders={orders}
           nonce={nonce}
           orderId={nextId.current}
           pending={pending}
           note={note}
           bad={bad}
-          onSubmit={() => void place()}
+          onSubmit={(size, price) => void place(size, price)}
         />
         <OpenOrders orders={orders} onCancel={(order) => void onCancel(order)} />
       </section>
@@ -476,11 +556,9 @@ export function App() {
         markets={markets}
         orders={orders}
         onCancel={(order) => void onCancel(order)}
-        prints={prints}
-        blocks={feed}
+        onClose={(pos) => void onClose(pos)}
         fills={fills}
         history={history}
-        funding={funding}
       />
     </div>
   );

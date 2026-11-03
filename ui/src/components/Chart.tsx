@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 // TradingView Lightweight Charts. Copyright (c) 2025 TradingView, Inc. https://www.tradingview.com/
 import {
+  type AutoscaleInfo,
   CandlestickSeries,
   ColorType,
   type IChartApi,
@@ -14,6 +15,10 @@ import {
 import type { Series } from "../types";
 
 type Span = "1m" | "tick";
+
+// The 1m view opens on the last 30 minutes, priced 2% either side of the last close.
+const WINDOW_S = 30 * 60;
+const BAND = 0.02;
 
 type Plot = {
   chart: IChartApi;
@@ -32,7 +37,10 @@ export function Chart({ market, points }: Props) {
   const [span, setSpan] = useState<Span>("1m");
   const spanRef = useRef(span);
   const fitted = useRef<string | null>(null);
+  const shown = shownPrice(points, span);
+  const shownRef = useRef(shown);
   spanRef.current = span;
+  shownRef.current = shown;
 
   useEffect(() => {
     const el = host.current;
@@ -49,6 +57,7 @@ export function Chart({ market, points }: Props) {
       },
       localization: {
         timeFormatter: (time: Time) => axisLabel(spanRef.current, time),
+        priceFormatter: dollars,
       },
       grid: {
         vertLines: { color: "rgba(0, 0, 0, 0.12)" },
@@ -78,6 +87,11 @@ export function Chart({ market, points }: Props) {
         borderDownColor: "#c62828",
         wickUpColor: "#18803a",
         wickDownColor: "#c62828",
+        autoscaleInfoProvider: (base: () => AutoscaleInfo | null) => {
+          const px = shownRef.current;
+          if (px == null) return base();
+          return { priceRange: { minValue: px * (1 - BAND), maxValue: px * (1 + BAND) } };
+        },
       }),
       line: chart.addSeries(LineSeries, { color: "#000", lineWidth: 2 }),
     };
@@ -103,14 +117,22 @@ export function Chart({ market, points }: Props) {
         ? (points.ticks ?? []).map((point) => ({ ...point, time: point.time as UTCTimestamp }))
         : [],
     );
-    const key = span + ":" + (count > 0);
+    const key = market + ":" + span + ":" + (count > 0);
     if (fitted.current !== key) {
       fitted.current = key;
-      if (count > 0) plot.chart.timeScale().fitContent();
+      const last = candles && candles.length > 0 ? candles[candles.length - 1].time : null;
+      if (!ticks && last != null) {
+        plot.chart.priceScale("right").applyOptions({ autoScale: true });
+        plot.chart.timeScale().setVisibleRange({
+          from: (last - WINDOW_S) as UTCTimestamp,
+          to: last as UTCTimestamp,
+        });
+      } else if (count > 0) {
+        plot.chart.timeScale().fitContent();
+      }
     }
-  }, [points, span]);
+  }, [market, points, span]);
 
-  const shown = shownPrice(points, span);
   return (
     <section className="chart">
       <div className="row">
@@ -125,7 +147,7 @@ export function Chart({ market, points }: Props) {
         >
           tick
         </button>
-        <span>{shown == null ? "no price" : shown.toFixed(6)}</span>
+        <span>{shown == null ? "no price" : dollars(shown)}</span>
         <a href="https://www.tradingview.com/" target="_blank" rel="noreferrer">
           TradingView
         </a>
@@ -133,6 +155,10 @@ export function Chart({ market, points }: Props) {
       <div className="plot" ref={host}></div>
     </section>
   );
+}
+
+function dollars(price: number): string {
+  return price.toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
 
 function axisLabel(span: Span, time: Time): string {

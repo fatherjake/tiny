@@ -218,6 +218,7 @@ class FundingEvent:
     market: str
     index: int
     rate: int
+    ts: int
 
 
 @dataclass

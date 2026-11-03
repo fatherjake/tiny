@@ -201,6 +201,9 @@ class State:
         if order.id in self.books[order.market].orders:
             self._order_event(order, "rejected", order.size, "duplicate")
             return
+        if not order.reduce_only and not self._can_margin(order):
+            self._order_event(order, "rejected", order.size, "margin")
+            return
         self._match(order)
 
     def _match(self, order: Order) -> None:
@@ -416,7 +419,9 @@ class State:
             self.funding_index[market] += rate
             if self._recording:
                 self.events.append(
-                    FundingEvent(self._height, market, self.funding_index[market], rate)
+                    FundingEvent(
+                        self._height, market, self.funding_index[market], rate, timestamp_ms
+                    )
                 )
 
     def funding_payment(self, account: Account) -> int:
@@ -467,6 +472,26 @@ class State:
                 value += pos.entry_notional - notional
             required += notional * self.markets[market].maintenance_margin_bps // 10_000
         return value, required
+
+    def _can_margin(self, order: Order) -> bool:
+        """Account value must cover initial margin, notional / max leverage, on every position,
+        every resting order and this new one. Market orders are priced at their worst price."""
+        value, _ = self.margin(order.trader)
+        account = self.accounts.get(order.trader)
+        required = self._initial(order)
+        for market, pos in sorted(account.positions.items()) if account else ():
+            mark = self.mark_prices.get(market)
+            if pos.size != 0 and mark is not None:
+                lev = self.markets[market].max_leverage
+                required += abs(pos.size) * mark // PRICE_SCALE // lev
+        for book in self.books.values():
+            for resting in book.orders.values():
+                if resting.trader == order.trader and not resting.reduce_only:
+                    required += self._initial(resting)
+        return value >= required
+
+    def _initial(self, order: Order) -> int:
+        return order.size * order.price // PRICE_SCALE // self.markets[order.market].max_leverage
 
     def _free_collateral(self, trader: str) -> int:
         account = self.accounts[trader]

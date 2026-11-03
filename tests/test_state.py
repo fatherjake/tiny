@@ -15,6 +15,7 @@ from core.types import (
     Market,
     OraclePrice,
     Order,
+    OrderEvent,
     OrderType,
     PlaceOrder,
     Position,
@@ -139,8 +140,8 @@ def place(
 
 def _with_resting_ask() -> tuple[State, str, str]:
     state = State([MARKET])
-    alice = fund(state, ALICE, 1_000 * USDC_SCALE)
-    bob = fund(state, BOB, 1_000 * USDC_SCALE)
+    alice = fund(state, ALICE, 20_000 * USDC_SCALE)
+    bob = fund(state, BOB, 20_000 * USDC_SCALE)
     state.apply_block(block(1, place(ALICE, 1, 1, Side.SELL, PX, ONE), timestamp_ms=1_000))
     return state, alice, bob
 
@@ -167,8 +168,8 @@ def test_a_cancel_in_the_block_runs_before_the_taker() -> None:
     assert "BTC-PERP" not in state.accounts[alice].positions
     assert state.books["BTC-PERP"].orders == {}
     assert state.block_fills == []
-    assert state.accounts[bob].collateral == 1_000 * USDC_SCALE
-    assert state.accounts[alice].collateral == 1_000 * USDC_SCALE
+    assert state.accounts[bob].collateral == 20_000 * USDC_SCALE
+    assert state.accounts[alice].collateral == 20_000 * USDC_SCALE
     assert state.nonce(bob) == 1
     assert state.nonce(alice) == 2
 
@@ -188,16 +189,16 @@ def test_a_later_nonce_cancel_still_applies_ahead_of_its_signer() -> None:
 
 def test_fills_charge_fees_and_open_signed_positions() -> None:
     state = State([MARKET])
-    alice = fund(state, ALICE, 1_000 * USDC_SCALE)
-    bob = fund(state, BOB, 1_000 * USDC_SCALE)
+    alice = fund(state, ALICE, 20_000 * USDC_SCALE)
+    bob = fund(state, BOB, 20_000 * USDC_SCALE)
     state.apply_tx(place(ALICE, 1, 1, Side.SELL, PX, ONE), 0)
     state.apply_tx(place(BOB, 1, 2, Side.BUY, PX, ONE, OrderType.MARKET), 0)
     assert state.accounts[alice].positions["BTC-PERP"].size == -ONE
     assert state.accounts[alice].positions["BTC-PERP"].entry_notional == 50_000 * USDC_SCALE
-    assert state.accounts[alice].collateral == 990 * USDC_SCALE
+    assert state.accounts[alice].collateral == 19_990 * USDC_SCALE
     assert state.accounts[bob].positions["BTC-PERP"].size == ONE
     assert state.accounts[bob].positions["BTC-PERP"].entry_notional == 50_000 * USDC_SCALE
-    assert state.accounts[bob].collateral == 975 * USDC_SCALE
+    assert state.accounts[bob].collateral == 19_975 * USDC_SCALE
 
 
 def test_closing_realizes_pnl_and_reduce_only_cannot_flip() -> None:
@@ -222,34 +223,34 @@ def test_closing_realizes_pnl_and_reduce_only_cannot_flip() -> None:
 
 def test_a_partial_close_keeps_the_remaining_entry() -> None:
     state = State([MARKET])
-    alice = fund(state, ALICE, 1_000 * USDC_SCALE)
-    bob = fund(state, BOB, 1_000 * USDC_SCALE)
+    alice = fund(state, ALICE, 20_000 * USDC_SCALE)
+    bob = fund(state, BOB, 20_000 * USDC_SCALE)
     state.apply_tx(place(ALICE, 1, 1, Side.SELL, PX, 2 * ONE), 0)
     state.apply_tx(place(BOB, 1, 2, Side.BUY, PX, 2 * ONE, OrderType.MARKET), 0)
     state.apply_tx(place(BOB, 2, 3, Side.SELL, PX, ONE), 0)
     state.apply_tx(place(ALICE, 2, 4, Side.BUY, PX, ONE, OrderType.MARKET), 0)
     assert state.accounts[bob].positions["BTC-PERP"].size == ONE
     assert state.accounts[bob].positions["BTC-PERP"].entry_notional == 50_000 * USDC_SCALE
-    assert state.accounts[bob].collateral == 940 * USDC_SCALE
+    assert state.accounts[bob].collateral == 19_940 * USDC_SCALE
     assert state.accounts[alice].positions["BTC-PERP"].size == -ONE
     assert state.accounts[alice].positions["BTC-PERP"].entry_notional == 50_000 * USDC_SCALE
-    assert state.accounts[alice].collateral == 955 * USDC_SCALE
+    assert state.accounts[alice].collateral == 19_955 * USDC_SCALE
 
 
 def test_a_fill_that_flips_the_position_opens_the_remainder() -> None:
     state = State([MARKET])
-    alice = fund(state, ALICE, 1_000 * USDC_SCALE)
-    bob = fund(state, BOB, 1_000 * USDC_SCALE)
+    alice = fund(state, ALICE, 20_000 * USDC_SCALE)
+    bob = fund(state, BOB, 20_000 * USDC_SCALE)
     state.apply_tx(place(ALICE, 1, 1, Side.SELL, PX, ONE), 0)
     state.apply_tx(place(BOB, 1, 2, Side.BUY, PX, ONE, OrderType.MARKET), 0)
     state.apply_tx(place(BOB, 2, 3, Side.SELL, PX, 2 * ONE), 0)
     state.apply_tx(place(ALICE, 2, 4, Side.BUY, PX, 2 * ONE, OrderType.MARKET), 0)
     assert state.accounts[alice].positions["BTC-PERP"].size == ONE
     assert state.accounts[alice].positions["BTC-PERP"].entry_notional == 50_000 * USDC_SCALE
-    assert state.accounts[alice].collateral == 940 * USDC_SCALE
+    assert state.accounts[alice].collateral == 19_940 * USDC_SCALE
     assert state.accounts[bob].positions["BTC-PERP"].size == -ONE
     assert state.accounts[bob].positions["BTC-PERP"].entry_notional == 50_000 * USDC_SCALE
-    assert state.accounts[bob].collateral == 955 * USDC_SCALE
+    assert state.accounts[bob].collateral == 19_955 * USDC_SCALE
 
 
 def test_margin_marks_positions_to_market_and_sums_maintenance() -> None:
@@ -413,6 +414,8 @@ def test_median_price_picks_the_middle_and_averages_an_even_count() -> None:
 def test_mark_follows_the_oracle_inside_the_spread() -> None:
     validator = public_key(VALIDATOR).hex()
     state = State([MARKET], validators={validator})
+    fund(state, ALICE, USDC_SCALE)
+    fund(state, BOB, USDC_SCALE)
     bid = place(ALICE, 1, 1, Side.BUY, 100, ONE)
     ask = place(BOB, 1, 2, Side.SELL, 110, ONE)
     state.apply_block(block(1, bid, ask, timestamp_ms=1_000))
@@ -523,6 +526,8 @@ def test_state_root_ignores_insertion_order_and_changes_with_state() -> None:
     right.bridge.delivered.add((2, 1))
     assert left.state_root() == right.state_root()
 
+    fund(left, ALICE, USDC_SCALE)
+    fund(right, ALICE, USDC_SCALE)
     left.apply_tx(place(ALICE, 1, 1, Side.BUY, 100, ONE), 0)
     left.apply_tx(place(ALICE, 2, 2, Side.BUY, 100, ONE), 0)
     right.apply_tx(place(ALICE, 1, 2, Side.BUY, 100, ONE), 0)
@@ -531,10 +536,10 @@ def test_state_root_ignores_insertion_order_and_changes_with_state() -> None:
 
     same_a = State([MARKET], validators={public_key(VALIDATOR).hex()})
     same_b = State([MARKET], validators={public_key(VALIDATOR).hex()})
-    fund(same_a, ALICE, 1_000 * USDC_SCALE)
-    fund(same_a, BOB, 1_000 * USDC_SCALE)
-    fund(same_b, BOB, 1_000 * USDC_SCALE)
-    fund(same_b, ALICE, 1_000 * USDC_SCALE)
+    fund(same_a, ALICE, 20_000 * USDC_SCALE)
+    fund(same_a, BOB, 20_000 * USDC_SCALE)
+    fund(same_b, BOB, 20_000 * USDC_SCALE)
+    fund(same_b, ALICE, 20_000 * USDC_SCALE)
     trades = block(
         1,
         place(ALICE, 1, 1, Side.SELL, PX, ONE),
@@ -551,7 +556,7 @@ def test_state_root_ignores_insertion_order_and_changes_with_state() -> None:
 
 def test_from_bytes_restores_the_state_root() -> None:
     state = State([MARKET], validators={public_key(VALIDATOR).hex()})
-    alice = fund(state, ALICE, 1_000 * USDC_SCALE)
+    alice = fund(state, ALICE, 20_000 * USDC_SCALE)
     state.accounts[alice].positions["BTC-PERP"] = Position("BTC-PERP", size=ONE, entry_notional=5)
     state.apply_block(block(1, place(ALICE, 1, 7, Side.BUY, PX, ONE), timestamp_ms=1_000))
     state.bridge.oracle_pubkey = b"oracle"
@@ -561,9 +566,45 @@ def test_from_bytes_restores_the_state_root() -> None:
     restored = State.from_bytes(state.to_bytes())
     assert restored.state_root() == state.state_root()
     assert restored.height == 1
-    assert restored.accounts[alice].collateral == 1_000 * USDC_SCALE
+    assert restored.accounts[alice].collateral == 20_000 * USDC_SCALE
     assert restored.accounts[alice].positions["BTC-PERP"].size == ONE
     assert restored.books["BTC-PERP"].best_bid() == PX
     assert restored.bridge.oracle_pubkey == b"oracle"
     assert restored.bridge.delivered == {(1, 4)}
     assert restored.markets["BTC-PERP"] == MARKET
+
+
+def _order_kinds(state: State) -> list[tuple[int, str, str]]:
+    return [
+        (event.order_id, event.kind, event.reason)
+        for event in state.events
+        if isinstance(event, OrderEvent)
+    ]
+
+
+def test_an_order_without_initial_margin_is_rejected() -> None:
+    state = State([MARKET])
+    state.record_events = True
+    state.apply_block(block(1, place(ALICE, 1, 1, Side.BUY, PX, ONE)))
+    assert _order_kinds(state) == [(1, "rejected", "margin")]
+    assert state.books["BTC-PERP"].orders == {}
+
+
+def test_initial_margin_is_notional_over_max_leverage_and_counts_resting_orders() -> None:
+    state = State([MARKET])
+    state.record_events = True
+    fund(state, ALICE, 5_000 * USDC_SCALE - 1)
+    state.apply_block(block(1, place(ALICE, 1, 1, Side.BUY, PX, ONE)))
+    assert _order_kinds(state) == [(1, "rejected", "margin")]
+    fund(state, ALICE, 5_000 * USDC_SCALE)
+    state.apply_block(
+        block(2, place(ALICE, 1, 2, Side.BUY, PX, ONE), place(ALICE, 2, 3, Side.BUY, PX, ONE))
+    )
+    assert _order_kinds(state) == [(2, "placed", ""), (3, "rejected", "margin")]
+
+
+def test_a_reduce_only_order_needs_no_margin() -> None:
+    state = State([MARKET])
+    state.record_events = True
+    state.apply_block(block(1, place(ALICE, 1, 1, Side.BUY, PX, ONE, reduce_only=True)))
+    assert "margin" not in [reason for _, _, reason in _order_kinds(state)]

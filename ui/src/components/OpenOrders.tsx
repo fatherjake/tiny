@@ -1,4 +1,4 @@
-import { fmt } from "../lib/scale";
+import { fmt, usd } from "../lib/scale";
 import type { OpenOrder } from "../types";
 
 type Props = {
@@ -18,7 +18,7 @@ export function OpenOrders({ orders, onCancel }: Props) {
                 <td className="l">{order.market}</td>
                 <td>{String(order.id)}</td>
                 <td>{order.side === "buy" ? "B" : "S"}</td>
-                <td>{fmt(order.price)}</td>
+                <td>{usd(order.price)}</td>
                 <td>{fmt(order.size)}</td>
                 <td>
                   <button type="button" onClick={() => onCancel(order)}>

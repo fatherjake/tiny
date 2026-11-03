@@ -35,6 +35,8 @@ cd ui && npm run dev
 
 Vite serves the UI and proxies `/trades`, `/candles`, `/ws`, and the other API routes to port 8000. Open the URL it prints.
 
+To trade from a wallet, connect it and press `key from wallet`. The wallet signs a fixed message and its SHA-256 hash becomes your ed25519 trading key, so the same wallet always opens the same tiny account. Browser-extension wallets work as is. QR and mobile wallets need a WalletConnect project id in `VITE_WALLETCONNECT_PROJECT_ID`.
+
 ## Run the tests
 
 ```
@@ -112,3 +114,16 @@ Line counts from `uv run python scripts/check_loc.py`. Recount after edits. Each
 `sim/` and `tests/` have no line limit.
 
 Agent setup (skills, MCP) comes from [agent-boilerplate-v2](https://github.com/fatherjake/agent-boilerplate-v2); see `.agents/BOILERPLATE.md`.
+
+## TODO
+
+### Custom leverage
+
+Today every order is margined at the market's `max_leverage`, and the UI shows it as fixed. To let a trader pick leverage per market, change initial margin only. Maintenance margin, liquidation and funding stay as they are, since they already work from account value against each market's `maintenance_margin_bps`.
+
+- `core/types.py`: add `leverage: dict[str, int]` to `Account`. A missing market means `max_leverage`. Add a `SetLeverage(trader, market, leverage)` body to `TxBody`.
+- `core/state.py`: add a `SetLeverage` case to `_apply_body`. `_set_leverage` ignores a wrong signer, an unknown market, or a value outside `1..max_leverage`. It reverts the change if the account no longer covers initial margin on its positions and resting orders.
+- `core/state.py`: add `_lev(trader, market)`. Use it in `_initial`, and in a new `_initial_used(trader)` that holds the two loops now in `_can_margin`.
+- `core/state.py`: read `leverage` in `from_bytes`. The field changes every state root, so an older `sim.sqlite` has to be deleted.
+- Tests: an order margined at a lower leverage, a decrease that gets reverted, and an out-of-range value that does nothing.
+- UI: encode `set_leverage` txs, bring back the leverage slider so it sends one, and read `account.leverage[market]` in the order form.

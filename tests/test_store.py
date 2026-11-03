@@ -7,9 +7,9 @@ import pytest
 from core.node import public_key, sign_tx
 from core.state import HOUR_MS, State
 from core.store import MemoryStore, SqliteStore
-from core.types import Block, CancelOrder, OrderType, Side
+from core.types import USDC_SCALE, Block, CancelOrder, OrderType, Side
 from tests.test_node import make_node
-from tests.test_state import ALICE, BOB, MARKET, ONE, PX, VALIDATOR, block, oracle, place
+from tests.test_state import ALICE, BOB, MARKET, ONE, PX, VALIDATOR, block, fund, oracle, place
 
 SELL = Side.SELL
 BUY = Side.BUY
@@ -17,8 +17,15 @@ LIMIT = OrderType.LIMIT
 MARKET_ORDER = OrderType.MARKET
 
 
-def _load(store: MemoryStore | SqliteStore, blocks: list[Block]) -> None:
+def _genesis(store: MemoryStore | SqliteStore) -> State:
     state = State(store.markets, store.validators)
+    for key in (ALICE, BOB):
+        fund(state, key, 20_000 * USDC_SCALE)
+    return state
+
+
+def _load(store: MemoryStore | SqliteStore, blocks: list[Block]) -> None:
+    state = _genesis(store)
     for item in blocks:
         state.apply_block(item)
         store.append_block(item, tuple(state.events))
@@ -96,6 +103,7 @@ def test_rebuild_matches_live_rows_and_a_reopen_keeps_them(tmp_path) -> None:
             "size": ONE,
             "remaining": 0,
             "status": "cancelled",
+            "reason": "",
             "created_height": 3,
             "updated_height": 4,
         },
@@ -109,6 +117,7 @@ def test_rebuild_matches_live_rows_and_a_reopen_keeps_them(tmp_path) -> None:
             "size": 2 * ONE,
             "remaining": 0,
             "status": "filled",
+            "reason": "",
             "created_height": 1,
             "updated_height": 2,
         },
@@ -122,6 +131,7 @@ def test_rebuild_matches_live_rows_and_a_reopen_keeps_them(tmp_path) -> None:
             "size": ONE,
             "remaining": ONE,
             "status": "rejected",
+            "reason": "nonce",
             "created_height": 1,
             "updated_height": 1,
         },
@@ -147,8 +157,8 @@ def test_rebuild_matches_live_rows_and_a_reopen_keeps_them(tmp_path) -> None:
         {"ts": 60_000, "open": PX, "high": PX, "low": PX, "close": PX, "volume": ONE},
     ]
 
-    memory.rebuild_indexes()
-    sqlite.rebuild_indexes()
+    memory.rebuild_indexes(_genesis(memory))
+    sqlite.rebuild_indexes(_genesis(sqlite))
     assert memory.recent_trades("BTC-PERP", 10) == [second, first]
     assert sqlite.order_history(alice, 10, None) == alice_orders
     assert sqlite.candles("BTC-PERP", "1m", None, None) == candles
@@ -175,16 +185,30 @@ def test_funding_history_rebuilds_from_the_log(tmp_path) -> None:
     ]
     store = SqliteStore(tmp_path / "fund.sqlite", [MARKET], validators)
     _load(store, blocks)
-    history = [{"height": 2, "market": "BTC-PERP", "index": 30, "rate": 30}]
+    history = [{"height": 2, "market": "BTC-PERP", "index": 30, "rate": 30, "ts": 1_000 + HOUR_MS}]
     assert store.funding_history("BTC-PERP", 10) == history
-    store.rebuild_indexes()
+    store.rebuild_indexes(_genesis(store))
     assert store.funding_history("BTC-PERP", 10) == history
+    assert store.funding_since("BTC-PERP", 1_000) == history[0]
+    assert store.funding_since("BTC-PERP", 2_000 + HOUR_MS) is None
     store.close()
+
+
+def test_a_file_from_an_older_schema_is_refused(tmp_path) -> None:
+    path = tmp_path / "old.sqlite"
+    SqliteStore(path, [MARKET]).close()
+    db = sqlite3.connect(path)
+    db.execute("ALTER TABLE orders DROP COLUMN reason")
+    db.close()
+    with pytest.raises(RuntimeError, match="older version"):
+        SqliteStore(path, [MARKET])
 
 
 def test_a_preview_does_not_append_and_a_commit_does(tmp_path) -> None:
     node, _transport = make_node()
     node.store = SqliteStore(tmp_path / "node.sqlite", [MARKET], node.state.validators)
+    for key in (ALICE, BOB):
+        fund(node.state, key, 20_000 * USDC_SCALE)
     item = block(
         1,
         place(ALICE, 1, 1, SELL, PX, ONE),
@@ -225,3 +249,26 @@ def test_unknown_candle_interval_is_rejected(tmp_path) -> None:
                 candidate.candles("BTC-PERP", "2s", None, None)
     finally:
         store.close()
+
+
+@pytest.mark.parametrize("kind", ["memory", "sqlite"])
+def test_two_traders_can_use_the_same_order_id_and_reasons_are_kept(tmp_path, kind) -> None:
+    alice = public_key(ALICE).hex()
+    bob = public_key(BOB).hex()
+    store = (
+        MemoryStore([MARKET])
+        if kind == "memory"
+        else SqliteStore(tmp_path / "ids.sqlite", [MARKET])
+    )
+    state = State([MARKET])
+    fund(state, BOB, 10_000 * USDC_SCALE)
+    item = block(1, place(ALICE, 1, 7, BUY, PX, ONE), place(BOB, 1, 7, BUY, PX, ONE))
+    state.apply_block(item)
+    store.append_block(item, tuple(state.events))
+    rows = {who: store.order_history(who, 10) for who in (alice, bob)}
+    assert [(row["order_id"], row["status"], row["reason"]) for row in rows[alice]] == [
+        (7, "rejected", "margin")
+    ]
+    assert [(row["order_id"], row["status"], row["reason"]) for row in rows[bob]] == [
+        (7, "placed", "")
+    ]

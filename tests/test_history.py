@@ -6,9 +6,9 @@ from fastapi import HTTPException
 from core.api import create_app
 from core.node import public_key, sign_tx
 from core.store import MemoryStore
-from core.types import CancelOrder, OrderType, Side
+from core.types import USDC_SCALE, CancelOrder, OrderType, Side
 from tests.test_node import make_node
-from tests.test_state import ALICE, BOB, ONE, PX, block, place
+from tests.test_state import ALICE, BOB, ONE, PX, block, fund, place
 
 
 def test_trade_and_order_routes_page_by_cursor() -> None:
@@ -16,6 +16,8 @@ def test_trade_and_order_routes_page_by_cursor() -> None:
     bob = public_key(BOB).hex()
     node, _transport = make_node()
     assert isinstance(node.store, MemoryStore)
+    for key in (ALICE, BOB):
+        fund(node.state, key, 20_000 * USDC_SCALE)
     app = create_app(node)
     routes = {route.path: route.endpoint for route in app.routes if hasattr(route, "path")}
     blocks = [
@@ -62,6 +64,7 @@ def test_trade_and_order_routes_page_by_cursor() -> None:
         "size": ONE,
         "remaining": ONE,
         "status": "placed",
+        "reason": "",
         "created_height": 3,
         "updated_height": 3,
     }
@@ -82,6 +85,7 @@ def test_trade_and_order_routes_page_by_cursor() -> None:
             "size": ONE,
             "remaining": 0,
             "status": "cancelled",
+            "reason": "",
             "created_height": 3,
             "updated_height": 4,
         }

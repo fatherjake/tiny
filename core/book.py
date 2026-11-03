@@ -98,6 +98,7 @@ class OrderBook:
         else:
             levels, prices = self.asks, self.ask_prices
         queue = levels[order.price]
+        # This could be better as a d linked list but its find for this toy version for now
         levels[order.price] = deque(resting for resting in queue if resting.id != order_id)
         if not levels[order.price]:
             del levels[order.price]

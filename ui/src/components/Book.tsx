@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 
 import { spreadMid } from "../lib/series";
-import { bi, fmt } from "../lib/scale";
+import { bi, fmt, usd } from "../lib/scale";
 import type { Depth, Level, Scaled } from "../types";
 
 type Props = {
@@ -25,8 +25,9 @@ function depthStyle(pct: number): CSSProperties {
 }
 
 export function Book({ book, onPrice }: Props) {
-  const askRows = totals((book?.asks ?? []).slice(0, 14)).reverse();
-  const bidRows = totals((book?.bids ?? []).slice(0, 14));
+  // Rows past what fits are clipped at the card's edge, so take every level the feed sends.
+  const askRows = totals(book?.asks ?? []).reverse();
+  const bidRows = totals(book?.bids ?? []);
   let max = 1n;
   for (const row of askRows.concat(bidRows)) if (row.total > max) max = row.total;
   const levelRow = (row: Row, side: "ask" | "bid", key: string) => {
@@ -36,7 +37,7 @@ export function Book({ book, onPrice }: Props) {
       <tr key={key} className={side} style={depthStyle(pct)}>
         <td className="l">
           <button type="button" className={"px " + side} onClick={() => onPrice(row.price)}>
-            {fmt(row.price)}
+            {usd(row.price)}
           </button>
         </td>
         <td>{fmt(row.size)}</td>
@@ -55,15 +56,15 @@ export function Book({ book, onPrice }: Props) {
             <td>Total</td>
           </tr>
         </thead>
+        <tbody className="asks">{askRows.map((row) => levelRow(row, "ask", "a" + row.price))}</tbody>
         <tbody>
-          {askRows.map((row) => levelRow(row, "ask", "a" + row.price))}
-          <tr key="mid" className="mid">
+          <tr className="mid">
             <td className="l">Spread</td>
-            <td>{fmt(spread)}</td>
+            <td>{usd(spread)}</td>
             <td>{pct}</td>
           </tr>
-          {bidRows.map((row) => levelRow(row, "bid", "b" + row.price))}
         </tbody>
+        <tbody className="bids">{bidRows.map((row) => levelRow(row, "bid", "b" + row.price))}</tbody>
       </table>
     </section>
   );
