@@ -11,8 +11,8 @@ import { OrderForm } from "./components/OrderForm";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { TxError, generateKey, publicHex, readJson, secretFromHex, signAndPost } from "./lib/api";
 import { bytesToHex } from "./lib/encode";
-import { closeOrder, currentPrice, gridNote, marketPrice, outcome } from "./lib/orders";
-import { tryScaled, unscale, usd } from "./lib/scale";
+import { closeOrder, currentPrice, outcome } from "./lib/orders";
+import { unscale, usd } from "./lib/scale";
 import { keyFromSignature, keyMessage } from "./lib/wallet";
 import { applyCandles, rememberPrint, seed } from "./lib/series";
 import type {
@@ -114,7 +114,7 @@ export function App() {
   const [form, setForm] = useState<OrderDraft>({
     side: "buy",
     type: "limit",
-    size: "1",
+    usd: "100",
     price: "",
     reduceOnly: false,
   });
@@ -397,23 +397,14 @@ export function App() {
     setKeyError("");
   }
 
-  async function place() {
+  // The form has already turned dollars into a base size on the lot and checked the margin.
+  async function place(size: bigint, price: bigint) {
     if (!selected || busy.current) return;
     if (!key) {
       setBad(true);
       setNote("enter or generate a private key first");
       return;
     }
-    const size = tryScaled(form.size);
-    const price = form.type === "market" ? marketPrice(form.side, book) : tryScaled(form.price);
-    if (size == null || price == null) {
-      setBad(true);
-      setNote(
-        form.type === "market" ? "no quote for a market order" : "size and price must be numbers",
-      );
-      return;
-    }
-    if (gridNote(market, size, price, form.type)) return;
     if (size <= 0n || price <= 0n) {
       setBad(true);
       setNote("size and price must be positive");
@@ -545,13 +536,16 @@ export function App() {
           form={form}
           patch={patch}
           market={market}
+          markets={markets}
           book={book}
+          account={account}
+          orders={orders}
           nonce={nonce}
           orderId={nextId.current}
           pending={pending}
           note={note}
           bad={bad}
-          onSubmit={() => void place()}
+          onSubmit={(size, price) => void place(size, price)}
         />
         <OpenOrders orders={orders} onCancel={(order) => void onCancel(order)} />
       </section>

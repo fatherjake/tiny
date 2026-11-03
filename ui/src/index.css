@@ -121,3 +121,4 @@ button.px { border: 0; padding: 0; background: transparent; }
 .book button.px.ask, .tape td.ask { color: #c62828; }
 .book button.px.bid, .tape td.bid { color: #18803a; }
 .book tr.mid td { font-weight: bold; }
+.row.spread { justify-content: space-between; }

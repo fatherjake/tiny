@@ -88,7 +88,7 @@ export type AccountView = {
 export type OrderDraft = {
   side: "buy" | "sell";
   type: "limit" | "market";
-  size: string;
+  usd: string; // order size in dollars
   price: string;
   reduceOnly: boolean;
 };

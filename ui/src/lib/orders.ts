@@ -1,5 +1,5 @@
-import type { Depth, MarketInfo, Position, StoredOrder } from "../types";
-import { bi } from "./scale";
+import type { AccountView, Depth, MarketInfo, OpenOrder, Position, StoredOrder } from "../types";
+import { SCALE, bi } from "./scale";
 
 const MARKET_SLIPPAGE_BPS = 100n;
 
@@ -36,6 +36,45 @@ export function currentPrice(market: MarketInfo | null): bigint | null {
   const tick = bi(market.tick_size);
   const snapped = tick > 0n ? price - (price % tick) : price;
   return snapped > 0n ? snapped : null;
+}
+
+export function midPrice(market: MarketInfo | null, book: Depth | null): bigint | null {
+  if (market == null || book?.best_bid == null || book.best_ask == null) return null;
+  const mid = (bi(book.best_bid) + bi(book.best_ask)) / 2n;
+  const tick = bi(market.tick_size);
+  const snapped = tick > 0n ? mid - (mid % tick) : mid;
+  return snapped > 0n ? snapped : null;
+}
+
+// Dollars to a base size at `price`, rounded down to the lot.
+export function sizeFromUsd(usd: bigint, price: bigint, lot: bigint): bigint {
+  if (price <= 0n) return 0n;
+  const size = (usd * SCALE) / price;
+  return lot > 0n ? size - (size % lot) : size;
+}
+
+// What the chain checks a new order against: account value less the initial margin, at each
+// market's max leverage, of open positions at mark and of resting orders.
+export function availableMargin(
+  account: AccountView | null,
+  markets: MarketInfo[],
+  orders: OpenOrder[],
+): bigint {
+  if (account == null) return 0n;
+  const lev = (name: string) => BigInt(markets.find((m) => m.name === name)?.max_leverage || 1);
+  let used = 0n;
+  for (const pos of Object.values(account.positions ?? {})) {
+    const market = markets.find((m) => m.name === pos.market);
+    const mark = market?.mark_price ?? market?.oracle_price;
+    if (mark == null) continue;
+    const size = bi(pos.size);
+    used += ((size < 0n ? -size : size) * bi(mark)) / SCALE / lev(pos.market);
+  }
+  for (const order of orders) {
+    used += (bi(order.size) * bi(order.price)) / SCALE / lev(order.market);
+  }
+  const free = bi(account.account_value ?? 0) - used;
+  return free > 0n ? free : 0n;
 }
 
 const REASONS: Record<string, string> = {
