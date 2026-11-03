@@ -33,6 +33,7 @@ MARKET = Market("BTC-PERP", tick_size=1, lot_size=1, max_leverage=10, maintenanc
 START_PRICE = 50_000 * PRICE_SCALE
 MOCK_COLLATERAL = 1_000_000 * USDC_SCALE
 PACE_MS = 50
+REAL_TIME_MS = 946_684_800_000  # 2000-01-01. Older block times came from the old clock.
 
 
 def demo_key(index: int) -> bytes:
@@ -97,16 +98,20 @@ def drive(
 
 
 def wall_clock(nodes: list[Node]) -> None:
-    """Stamp new blocks with wall time, continuing from the last committed block.
+    """Stamp new blocks with the current time, and never earlier than the last one.
 
     The network's virtual clock still paces votes. Block time is what the chart and funding read.
     """
     tip = nodes[0].by_height.get(nodes[0].state.height)
-    base = 0 if tip is None else tip.timestamp_ms
-    started = time.monotonic()
+    last = 0 if tip is None else tip.timestamp_ms
+    if tip is not None and last < REAL_TIME_MS:
+        # Funding would charge the whole gap from 1970 to now on the next block.
+        raise RuntimeError("the sim db was stamped with the old 1970-based clock. Delete it.")
 
     def now_ms() -> int:
-        return base + int((time.monotonic() - started) * 1000)
+        nonlocal last
+        last = max(int(time.time() * 1000), last + 1)
+        return last
 
     for node in nodes:
         node.consensus.now_ms = now_ms

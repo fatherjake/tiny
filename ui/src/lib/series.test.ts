@@ -3,10 +3,10 @@ import { describe, expect, it } from "vitest";
 import { applyCandles, rememberPrint, seed } from "./series";
 
 describe("applyCandles", () => {
-  it("builds open high low close in time order", () => {
-    const next = applyCandles({ offset: 1_700_000_000 }, [
-      { ts: 60_000, open: 2_000_000, high: 4_000_000, low: 1_000_000, close: 3_000_000 },
-      { ts: 0, open: 1_000_000, high: 1_000_000, low: 1_000_000, close: 1_000_000 },
+  it("builds open high low close in time order, at the block time", () => {
+    const next = applyCandles({}, [
+      { ts: 1_700_000_060_000, open: 2_000_000, high: 4_000_000, low: 1_000_000, close: 3_000_000 },
+      { ts: 1_700_000_000_000, open: 1_000_000, high: 1_000_000, low: 1_000_000, close: 1_000_000 },
     ]);
     expect(next.bars).toEqual([
       { time: 1_700_000_000, open: 1, high: 1, low: 1, close: 1 },
@@ -14,26 +14,12 @@ describe("applyCandles", () => {
     ]);
   });
 
-  it("keeps each sim second as its own candle", () => {
+  it("keeps each second as its own candle", () => {
     const next = applyCandles({}, [
-      { ts: 0, open: 1_000_000, high: 1_000_000, low: 1_000_000, close: 1_000_000 },
-      { ts: 1_000, open: 2_000_000, high: 3_000_000, low: 2_000_000, close: 3_000_000 },
+      { ts: 1_700_000_000_000, open: 1_000_000, high: 1_000_000, low: 1_000_000, close: 1_000_000 },
+      { ts: 1_700_000_001_000, open: 2_000_000, high: 3_000_000, low: 2_000_000, close: 3_000_000 },
     ]);
-    const first = next.bars?.[0];
-    const second = next.bars?.[1];
-    expect(first?.time).toBeGreaterThan(1_700_000_000);
-    expect(second?.time).toBe((first?.time ?? 0) + 1);
-    expect(first).toMatchObject({ open: 1, high: 1, low: 1, close: 1 });
-    expect(second).toMatchObject({ open: 2, high: 3, low: 2, close: 3 });
-  });
-
-  it("shifts the first sim minute off the unix epoch", () => {
-    const next = applyCandles({}, [
-      { ts: 0, open: 2_000_000, high: 4_000_000, low: 1_000_000, close: 3_000_000 },
-    ]);
-    const time = next.bars?.[0]?.time ?? 0;
-    expect(time).toBeGreaterThan(1_700_000_000);
-    expect(next.bars?.[0]).toMatchObject({ open: 2, high: 4, low: 1, close: 3 });
+    expect(next.bars?.map((bar) => bar.time)).toEqual([1_700_000_000, 1_700_000_001]);
   });
 });
 

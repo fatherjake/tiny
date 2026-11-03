@@ -44,16 +44,9 @@ export type CandleRow = {
 
 export function applyCandles(book: Series, rows: CandleRow[]): Series {
   const ordered = [...rows].sort((a, b) => Number(a.ts) - Number(b.ts));
-  const latest = lastOf(ordered);
-  const offset =
-    book.offset != null
-      ? book.offset
-      : latest != null
-        ? Math.floor(Date.now() / 1000) - Math.floor(Number(latest.ts) / 1000)
-        : null;
   const bars: NonNullable<Series["bars"]> = [];
   for (const row of ordered) {
-    const time = Math.floor(Number(row.ts) / 1000) + (offset ?? 0);
+    const time = Math.floor(Number(row.ts) / 1000);
     const bar = {
       time,
       open: Number(bi(row.open)) / 1e6,
@@ -66,7 +59,7 @@ export function applyCandles(book: Series, rows: CandleRow[]): Series {
     if (last && time === last.time) bars[bars.length - 1] = bar;
     else bars.push(bar);
   }
-  return { ...book, offset: offset ?? book.offset, bars };
+  return { ...book, bars };
 }
 
 type SeedRow = { height: number; price?: Scaled | null };

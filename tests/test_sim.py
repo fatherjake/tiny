@@ -1,5 +1,7 @@
 import time
 
+import pytest
+
 from core.node import public_key
 from core.types import USDC_SCALE
 from sim.__main__ import MARKET, build, wall_clock
@@ -77,11 +79,23 @@ def test_restart_keeps_node0_history_and_extends_the_chain(tmp_path) -> None:
     nodes2[0].store.close()
 
 
-def test_wall_clock_advances_block_time_without_moving_the_network() -> None:
+def test_wall_clock_stamps_real_time_without_moving_the_network() -> None:
     net, nodes, _funded = build(1, (0, 0), 0.0, seed=0, traders=0)
     wall_clock(nodes)
+    before = int(time.time() * 1000)
     first = nodes[0].consensus.now_ms()
     time.sleep(0.05)
     second = nodes[0].consensus.now_ms()
     assert net.now == 0
+    assert abs(first - before) < 1_000
     assert second - first >= 40
+    # Two stamps in the same millisecond still move forward.
+    assert nodes[0].consensus.now_ms() < nodes[0].consensus.now_ms()
+
+
+def test_wall_clock_refuses_a_chain_stamped_from_1970() -> None:
+    net, nodes, _funded = build(4, (0, 0), 0.0, seed=0, traders=0)
+    net.run_for(1_000)
+    assert nodes[0].state.height > 0
+    with pytest.raises(RuntimeError, match="1970"):
+        wall_clock(nodes)
