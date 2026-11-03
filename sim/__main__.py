@@ -20,6 +20,7 @@ import uvicorn
 
 from core.api import create_app
 from core.node import Node, public_key
+from core.state import State
 from core.store import SqliteStore
 from core.types import PRICE_SCALE, USDC_SCALE, Market, Tx
 from sim.bots import Bot
@@ -72,8 +73,12 @@ def build(
         saved = nodes[0].store.committed_blocks()
         tip = nodes[0].store.tip_qc()
         if saved and tip is not None and tip.block_hash == saved[-1].hash:
-            for node in nodes:
-                node.resume(saved, tip)
+            # Every node would replay to the same state, so replay once and copy it.
+            log.info("replaying %d blocks from %s", len(saved), db)
+            nodes[0].resume(saved, tip)
+            for node in nodes[1:]:
+                copy = State.from_bytes(nodes[0].state.to_bytes())
+                node.resume(saved, tip, copy)
     for node in nodes:
         node.start()
     return net, nodes, funded
