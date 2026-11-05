@@ -2,7 +2,7 @@ import time
 
 import pytest
 
-from core.node import public_key
+from core.node import Node, public_key
 from core.types import USDC_SCALE
 from sim.__main__ import MARKET, build, wall_clock
 from sim.bots import Bot
@@ -55,6 +55,7 @@ def test_bots_quote_both_sides_and_trade() -> None:
 def test_restart_keeps_node0_history_and_extends_the_chain(tmp_path) -> None:
     db = str(tmp_path / "sim.sqlite")
     net, nodes, funded = build(4, (0, 0), 0.0, seed=0, traders=1, db=db)
+    wall_clock(nodes)  # as the sim runs it, so the restart is not refused as a 1970 db
     bot = Bot(funded[0], "BTC-PERP", slot=0)
     for _ in range(80):
         net.run_for(50)
@@ -101,3 +102,18 @@ def test_wall_clock_refuses_a_chain_stamped_from_1970() -> None:
     assert nodes[0].state.height > 0
     with pytest.raises(RuntimeError, match="1970"):
         wall_clock(nodes)
+
+
+def test_restart_refuses_a_1970_db_before_replaying_it(tmp_path, monkeypatch) -> None:
+    db = str(tmp_path / "sim.sqlite")
+    net, nodes, _funded = build(4, (0, 0), 0.0, seed=0, traders=0, db=db)
+    net.run_for(1_000)
+    assert nodes[0].state.height > 0
+    nodes[0].store.close()
+
+    def replay(*_args: object) -> None:
+        raise AssertionError("replayed before refusing")
+
+    monkeypatch.setattr(Node, "resume", replay)
+    with pytest.raises(RuntimeError, match="1970"):
+        build(4, (0, 0), 0.0, seed=0, traders=0, db=db)

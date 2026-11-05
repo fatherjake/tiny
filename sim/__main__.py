@@ -22,7 +22,7 @@ from core.api import create_app
 from core.node import Node, public_key
 from core.state import State
 from core.store import SqliteStore
-from core.types import PRICE_SCALE, USDC_SCALE, Market, Tx
+from core.types import PRICE_SCALE, USDC_SCALE, Block, Market, Tx
 from sim.bots import Bot
 from sim.bridge import credit_accounts
 from sim.feed import FakePriceFeed
@@ -74,6 +74,7 @@ def build(
         saved = nodes[0].store.committed_blocks()
         tip = nodes[0].store.tip_qc()
         if saved and tip is not None and tip.block_hash == saved[-1].hash:
+            check_clock(saved[-1])  # before the replay, which can take a while
             # Every node would replay to the same state, so replay once and copy it.
             log.info("replaying %d blocks from %s", len(saved), db)
             nodes[0].resume(saved, tip)
@@ -102,6 +103,12 @@ def drive(
         time.sleep(PACE_MS / 1000)
 
 
+def check_clock(tip: Block) -> None:
+    # Funding would charge the whole gap from 1970 to now on the next block.
+    if tip.timestamp_ms < REAL_TIME_MS:
+        raise RuntimeError("the sim db was stamped with the old 1970-based clock. Delete it.")
+
+
 def wall_clock(nodes: list[Node]) -> None:
     """Stamp new blocks with the current time, and never earlier than the last one.
 
@@ -109,9 +116,8 @@ def wall_clock(nodes: list[Node]) -> None:
     """
     tip = nodes[0].by_height.get(nodes[0].state.height)
     last = 0 if tip is None else tip.timestamp_ms
-    if tip is not None and last < REAL_TIME_MS:
-        # Funding would charge the whole gap from 1970 to now on the next block.
-        raise RuntimeError("the sim db was stamped with the old 1970-based clock. Delete it.")
+    if tip is not None:
+        check_clock(tip)
 
     def now_ms() -> int:
         nonlocal last
