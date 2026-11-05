@@ -4,7 +4,7 @@
     POST /tx                        -> accept a signed tx into the mempool
     GET /book/{market}              -> bid and ask depth, with the oracle and mark
     GET /account/{trader}           -> collateral, positions, value and maintenance margin
-    GET /markets                    -> each market's oracle, mark, funding index and hour-old index
+    GET /markets                    -> each market's oracle, mark, fees, funding index and hour-old index
     GET /trades                     -> recent trades, newest first
     GET /status                     -> height, view, tip, mempool size and state root
     GET /trades/{market}            -> paged fills for one market
@@ -23,7 +23,7 @@ from fastapi import Body, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import ConfigDict, RootModel, ValidationError
 
 from core.node import Node
-from core.state import HOUR_MS
+from core.state import HOUR_MS, MAKER_FEE_BPS, TAKER_FEE_BPS
 from core.types import Account, Block, Market, Tx
 
 WS_INTERVAL_S = 0.25
@@ -124,6 +124,8 @@ def create_app(node: Node) -> FastAPI:
                 "mark_price": state.mark_prices.get(name),
                 "funding_index": state.funding_index[name],
                 "funding_ts": now,
+                "maker_fee_bps": MAKER_FEE_BPS,
+                "taker_fee_bps": TAKER_FEE_BPS,
                 # The oldest funding row in the last hour, to average the rate over.
                 "funding_base": None
                 if now is None
