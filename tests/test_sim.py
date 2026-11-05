@@ -72,6 +72,8 @@ def test_restart_keeps_node0_history_and_extends_the_chain(tmp_path) -> None:
     _net2, nodes2, _funded = build(4, (0, 0), 0.0, seed=0, traders=1, db=db)
     assert {node.state.height for node in nodes2} == {height}
     assert {node.state.state_root() for node in nodes2} == roots
+    # Replayed once and copied, so each node still owns its state.
+    assert len({id(node.state) for node in nodes2}) == 4
     assert nodes2[0].store.recent_trades("BTC-PERP", 20) == trades
     _net2.run_for(800)
     assert min(node.state.height for node in nodes2) > height

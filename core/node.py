@@ -330,9 +330,13 @@ class Node:
                 found = qc
         return found
 
-    def resume(self, blocks: tuple[Block, ...], tip: QC) -> None:
+    def resume(self, blocks: tuple[Block, ...], tip: QC, state: State | None = None) -> None:
+        """Replay `blocks`, or take `state` as already having applied them."""
+        if state is not None:
+            self.state = state
         for block in blocks:
-            self.state.apply_block(block)
+            if state is None:
+                self.state.apply_block(block)
             self.by_height[block.height] = block
             self.committed.append(block)
             self.consensus.blocks[block.hash] = block
