@@ -323,6 +323,7 @@ CREATE TABLE IF NOT EXISTS fills (
 CREATE INDEX IF NOT EXISTS fills_market_height ON fills (market, height);
 CREATE INDEX IF NOT EXISTS fills_taker ON fills (taker);
 CREATE INDEX IF NOT EXISTS fills_maker ON fills (maker);
+CREATE INDEX IF NOT EXISTS fills_market_ts ON fills (market, ts);
 CREATE TABLE IF NOT EXISTS orders (
     order_id INTEGER NOT NULL,
     trader TEXT NOT NULL,
@@ -359,27 +360,26 @@ _NEWEST_COLUMN = {"orders": "reason", "funding": "ts"}
 
 _STATEMENTS = [statement.strip() for statement in _SCHEMA.split(";") if statement.strip()]
 
+# Fill ids grow in commit order, so a bucket's open and close are its lowest and highest id.
 _CANDLES = """
-SELECT bucket AS ts, open, high, low, close, volume FROM (
+WITH buckets AS (
     SELECT
-        bucket,
-        FIRST_VALUE(price) OVER (PARTITION BY bucket ORDER BY height, tx_index, id) AS open,
-        MAX(price) OVER (PARTITION BY bucket) AS high,
-        MIN(price) OVER (PARTITION BY bucket) AS low,
-        FIRST_VALUE(price) OVER (
-            PARTITION BY bucket ORDER BY height DESC, tx_index DESC, id DESC
-        ) AS close,
-        SUM(size) OVER (PARTITION BY bucket) AS volume,
-        ROW_NUMBER() OVER (PARTITION BY bucket ORDER BY height, tx_index, id) AS rn
-    FROM (
-        SELECT (ts / ?1) * ?1 AS bucket, price, size, height, tx_index, id
-        FROM fills
-        WHERE market = ?2
-          AND (?3 IS NULL OR ts >= ?3)
-          AND (?4 IS NULL OR ts < ?4)
-    )
+        (ts / ?1) * ?1 AS bucket,
+        MIN(id) AS first_id,
+        MAX(id) AS last_id,
+        MAX(price) AS high,
+        MIN(price) AS low,
+        SUM(size) AS volume
+    FROM fills
+    WHERE market = ?2
+      AND (?3 IS NULL OR ts >= ?3)
+      AND (?4 IS NULL OR ts < ?4)
+    GROUP BY bucket
 )
-WHERE rn = 1
+SELECT b.bucket AS ts, f.price AS open, b.high, b.low, l.price AS close, b.volume
+FROM buckets b
+JOIN fills f ON f.id = b.first_id
+JOIN fills l ON l.id = b.last_id
 ORDER BY ts
 """
 
