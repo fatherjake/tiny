@@ -58,6 +58,11 @@ export function short(value: unknown): string {
   return String(value).slice(0, 8);
 }
 
+// "0x123...abc" for a wallet, "1234...abcd" for a trader key.
+export function shorten(value: string, head: number, tail: number): string {
+  return value.length <= head + tail + 3 ? value : value.slice(0, head) + "..." + value.slice(-tail);
+}
+
 export function pct(part: Scaled | null | undefined, whole: Scaled | null | undefined): string {
   if (part == null || whole == null) return "-";
   const den = bi(whole);

@@ -16,9 +16,11 @@ import type { Series } from "../types";
 
 type Span = "1m" | "tick";
 
-// The 1m view opens on the last 30 minutes, priced 2% either side of the last close.
+// The 1m view opens on the last 30 minutes. Its price scale is centred on the last close and
+// reaches just past the furthest visible high or low, but never closer than MIN_HALF.
 const WINDOW_S = 30 * 60;
-const BAND = 0.02;
+const PAD = 1.15;
+const MIN_HALF = 0.0005;
 
 type Plot = {
   chart: IChartApi;
@@ -63,7 +65,8 @@ export function Chart({ market, points }: Props) {
         vertLines: { color: "rgba(0, 0, 0, 0.12)" },
         horzLines: { color: "rgba(0, 0, 0, 0.12)" },
       },
-      rightPriceScale: { borderColor: edge },
+      // Equal margins, so the centred price sits in the middle of the plot.
+      rightPriceScale: { borderColor: edge, scaleMargins: { top: 0.05, bottom: 0.05 } },
       timeScale: {
         borderColor: edge,
         timeVisible: true,
@@ -89,8 +92,11 @@ export function Chart({ market, points }: Props) {
         wickDownColor: "#c62828",
         autoscaleInfoProvider: (base: () => AutoscaleInfo | null) => {
           const px = shownRef.current;
-          if (px == null) return base();
-          return { priceRange: { minValue: px * (1 - BAND), maxValue: px * (1 + BAND) } };
+          const seen = base();
+          if (px == null || seen?.priceRange == null) return seen;
+          const { minValue, maxValue } = seen.priceRange;
+          const half = Math.max((maxValue - px) * PAD, (px - minValue) * PAD, px * MIN_HALF);
+          return { priceRange: { minValue: px - half, maxValue: px + half } };
         },
       }),
       line: chart.addSeries(LineSeries, { color: "#000", lineWidth: 2 }),
@@ -152,7 +158,12 @@ export function Chart({ market, points }: Props) {
           TradingView
         </a>
       </div>
-      <div className="plot" ref={host}></div>
+      <div className="plot" ref={host}>
+        {/* Until the data this view draws arrives: candles for 1m, trades for tick. */}
+        {(span === "tick" ? points.ticks : points.bars) == null ? (
+          <progress className="loading" aria-label="loading chart" />
+        ) : null}
+      </div>
     </section>
   );
 }

@@ -54,17 +54,8 @@ export async function signAndPost(secret: Uint8Array, body: Canon, nonce: number
   throw new TxError(await errorText(res), res.status);
 }
 
-export function secretFromHex(hex: string): Uint8Array {
-  return ed.etc.hexToBytes(hex);
-}
-
 export async function publicHex(secret: Uint8Array): Promise<string> {
   return bytesToHex(await ed.getPublicKeyAsync(secret));
-}
-
-export async function generateKey(): Promise<{ hex: string; secret: Uint8Array; trader: string }> {
-  const { secretKey, publicKey } = await ed.keygenAsync();
-  return { hex: bytesToHex(secretKey), secret: secretKey, trader: bytesToHex(publicKey) };
 }
 
 // core/api.py is the schema. Callers name the shape they read.

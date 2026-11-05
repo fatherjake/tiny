@@ -1,6 +1,15 @@
 import type { FormEvent } from "react";
 
-import { availableMargin, gridNote, marketPrice, midPrice, sizeFromUsd } from "../lib/orders";
+import {
+  afterFill,
+  availableMargin,
+  bpsPct,
+  gridNote,
+  liquidationPrice,
+  marketPrice,
+  midPrice,
+  sizeFromUsd,
+} from "../lib/orders";
 import { SCALE, bi, tryScaled, unscale, usd } from "../lib/scale";
 import type { AccountView, Depth, MarketInfo, OpenOrder, OrderDraft } from "../types";
 
@@ -52,13 +61,33 @@ export function OrderForm({
   const notional = size != null && sizePx != null ? (size * sizePx) / SCALE : null;
   const needs = notional == null ? null : notional / BigInt(lev);
 
+  // Liquidation if this order fills at the price it is sized at. A market order pays the
+  // taker fee, a limit order is taken to rest and pay the maker fee. Other markets are left
+  // out, which is exact while the sim has one.
+  const pos = market ? account?.positions?.[market.name] : undefined;
+  let liquidation: bigint | null = null;
+  if (market && size != null && size > 0n && sizePx != null) {
+    const fee = BigInt((form.type === "market" ? market.taker_fee_bps : market.maker_fee_bps) ?? 0);
+    const after = afterFill(
+      {
+        collateral: bi(account?.collateral ?? 0),
+        size: bi(pos?.size ?? 0),
+        entry: bi(pos?.entry_notional ?? 0),
+      },
+      form.side === "buy" ? size : -size,
+      sizePx,
+      fee,
+    );
+    liquidation = liquidationPrice(after, BigInt(market.maintenance_margin_bps));
+  }
+
   let problem = gridNote(market, null, sendPx, form.type);
   if (!problem && form.type === "market" && cap == null) problem = "no quote";
   if (!problem && dollars == null) problem = "enter a size in USD";
   if (!problem && size === 0n) problem = "size is below one lot";
-  if (!problem && !form.reduceOnly && needs != null && needs > available) {
-    problem = "needs " + usd(needs) + " margin at " + lev + "x, " + usd(available) + " available";
-  }
+  // Not enough margin blocks the order like any problem, but only the red margin row shows it.
+  const short = !problem && !form.reduceOnly && needs != null && needs > available;
+  if (short) problem = "margin";
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -112,7 +141,7 @@ export function OrderForm({
       {form.type === "limit" ? (
         <div className="row">
           <span>price (USD)</span>
-          <input value={form.price} onInput={(event) => patch({ price: event.currentTarget.value })} />
+          <input className="amount" value={form.price} onInput={(event) => patch({ price: event.currentTarget.value })} />
           <button
             type="button"
             disabled={mid == null}
@@ -124,7 +153,7 @@ export function OrderForm({
       ) : null}
       <div className="row">
         <span>size (USD)</span>
-        <input value={form.usd} onInput={(event) => patch({ usd: event.currentTarget.value })} />
+        <input className="amount" value={form.usd} onInput={(event) => patch({ usd: event.currentTarget.value })} />
         <button
           type="button"
           disabled={available === 0n}
@@ -133,28 +162,48 @@ export function OrderForm({
           max
         </button>
       </div>
+      <div className="row">
+        <label className="row">
+          <input
+            type="checkbox"
+            checked={form.reduceOnly}
+            onChange={(event) => patch({ reduceOnly: event.currentTarget.checked })}
+          />
+          reduce only
+        </label>
+      </div>
       <div className="row spread">
-        <span>leverage</span>
-        <span>{lev}x cross, fixed</span>
+        <span>liquidation price</span>
+        <span>{usd(liquidation)}</span>
       </div>
-      <div className="row">
-        <button
-          type="button"
-          className={form.reduceOnly ? "on" : ""}
-          onClick={() => patch({ reduceOnly: !form.reduceOnly })}
-        >
-          reduce-only
-        </button>
+      <div className="row spread">
+        <span>order size</span>
         <span>
-          {size == null ? "-" : unscale(size)} {base} · margin {usd(needs)}
+          {size == null ? "-" : unscale(size)} {base}
         </span>
       </div>
-      {problem ? <div>{problem}</div> : null}
-      <div className="row">
+      <div className="row spread">
+        <span>order value</span>
+        <span>{usd(notional)}</span>
+      </div>
+      <div className={short ? "row spread error" : "row spread"}>
+        <span>margin required</span>
+        <span>{usd(needs)}</span>
+      </div>
+      <div className="row spread">
+        <span>fees</span>
         <span>
-          id {orderId} nonce {nonce}
+          {market?.taker_fee_bps != null && market.maker_fee_bps != null
+            ? bpsPct(market.taker_fee_bps) + " / " + bpsPct(market.maker_fee_bps)
+            : "-"}
         </span>
-        <button type="submit">{pending ? "sending" : "place"}</button>
+      </div>
+      {problem && !short ? <div>{problem}</div> : null}
+      <button type="submit" className="dark wide">
+        {pending ? "Sending Order" : "Place Order"}
+      </button>
+      <div className="muted stamp">
+        id {orderId} nonce {nonce}
       </div>
       {note ? <div className={bad ? "error" : ""}>{note}</div> : null}
     </form>

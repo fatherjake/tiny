@@ -1,18 +1,16 @@
-import { useEffect, useRef, useState } from "react";
+import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { useAccount, useSignMessage } from "wagmi";
 
 import { Chart } from "./components/Chart";
 import { Dock, type DockTab } from "./components/Dock";
 import { Header } from "./components/Header";
-import { KeyBox } from "./components/KeyBox";
 import { Ladder } from "./components/Ladder";
-import { OpenOrders } from "./components/OpenOrders";
 import { OrderForm } from "./components/OrderForm";
+import { Wallet } from "./components/Wallet";
 import { useWebSocket } from "./hooks/useWebSocket";
-import { TxError, generateKey, publicHex, readJson, secretFromHex, signAndPost } from "./lib/api";
-import { bytesToHex } from "./lib/encode";
+import { TxError, publicHex, readJson, signAndPost } from "./lib/api";
 import { closeOrder, currentPrice, outcome } from "./lib/orders";
-import { unscale, usd } from "./lib/scale";
+import { unscale } from "./lib/scale";
 import { keyFromSignature, keyMessage } from "./lib/wallet";
 import { applyCandles, rememberPrint, seed } from "./lib/series";
 import type {
@@ -34,6 +32,21 @@ import type {
 
 const REFRESH_MS = 250;
 const FEED_LIMIT = 50;
+const TICK_TRADES = 2_000;
+const DOCK_KEY = "tiny.dock";
+const DOCK_DEFAULT = 200;
+const DOCK_MIN = 60;
+const DOCK_ROOM = 200; // left for the header, chart and book above the dock
+
+// The dock height is a per-browser preference. Storage can be missing or blocked.
+function savedDock(): number {
+  try {
+    const value = Number(localStorage.getItem(DOCK_KEY));
+    return value > 0 ? value : DOCK_DEFAULT;
+  } catch {
+    return DOCK_DEFAULT;
+  }
+}
 
 type TraderKey = { secret: Uint8Array; trader: string };
 
@@ -44,10 +57,11 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message || String(err) : String(err);
 }
 
-async function everyTrade(market: string): Promise<StoredTrade[] | null> {
+// The newest `most` trades, a page at a time. The tick chart only needs the recent ones.
+async function recentTrades(market: string, most: number): Promise<StoredTrade[] | null> {
   const rows: StoredTrade[] = [];
   let cursor: StoredTrade | null = null;
-  for (;;) {
+  while (rows.length < most) {
     const query = new URLSearchParams({ limit: "500" });
     if (cursor) {
       query.set("before_height", String(cursor.height));
@@ -70,6 +84,7 @@ async function everyTrade(market: string): Promise<StoredTrade[] | null> {
     }
     cursor = oldest;
   }
+  return rows;
 }
 
 function asPrint(row: StoredTrade): Trade {
@@ -103,9 +118,10 @@ export function App() {
   const [feed, setFeed] = useState<BlockMsg[]>([]);
   const [prints, setPrints] = useState<Trade[]>([]);
   const [tab, setTab] = useState<DockTab>("positions");
-  const [hex, setHex] = useState("");
+  const [dock, setDock] = useState(savedDock);
   const [key, setKey] = useState<TraderKey | null>(null);
   const [keyError, setKeyError] = useState("");
+  const [signing, setSigning] = useState(false);
   const [account, setAccount] = useState<AccountView | null>(null);
   const [openOrders, setOpenOrders] = useState<OpenOrder[]>([]);
   const [history, setHistory] = useState<StoredOrder[]>([]);
@@ -126,12 +142,13 @@ export function App() {
   const awaiting = useRef<number | null>(null);
   const busy = useRef(false);
   const keyToken = useRef(0);
+  const signedFor = useRef<string | null>(null);
   const pricedFor = useRef("");
   // Bumped on new blocks, at most every REFRESH_MS, so account views refetch when one lands.
   const [landed, setLanded] = useState(0);
   const lastLanded = useRef(0);
   const [, bumpNonce] = useState(0);
-  const { address: wallet } = useAccount();
+  const { address: wallet, status: walletStatus } = useAccount();
   const { signMessageAsync } = useSignMessage();
 
   const ws = useWebSocket("/ws", (msg) => {
@@ -196,39 +213,40 @@ export function App() {
   useEffect(() => {
     if (!selected) return;
     let stop = false;
-    const load = async (scope: "all" | number) => {
+    // The first load takes all candles and the latest trades. Each refresh takes only the
+    // candles from the last two minutes and merges them in. Each part draws when it lands.
+    let since: number | null = null;
+    const load = async (first: boolean) => {
       const market = encodeURIComponent(selected);
-      const tradePromise =
-        scope === "all"
-          ? everyTrade(market)
-          : fetch("/trades/" + market + "?limit=" + scope).then(async (res) =>
+      const candles = (async () => {
+        const query = since == null ? "" : "&start=" + since;
+        const res = await fetch("/candles/" + market + "?interval=1m" + query);
+        if (stop || !res.ok) return;
+        const minutes = await readJson<StoredCandle[]>(res);
+        if (stop) return;
+        const latest = minutes.length ? Number(minutes[minutes.length - 1].ts) : null;
+        if (latest != null) since = latest - 60_000;
+        setSeries((prev) => ({ ...prev, [selected]: applyCandles(prev[selected] || {}, minutes) }));
+      })();
+      const trades = (async () => {
+        const rows = first
+          ? await recentTrades(market, TICK_TRADES)
+          : await fetch("/trades/" + market + "?limit=200").then(async (res) =>
               res.ok ? readJson<StoredTrade[]>(res) : null,
             );
-      const [rows, minuteRes, fundRes] = await Promise.all([
-        tradePromise,
-        fetch("/candles/" + market + "?interval=1m"),
-        fetch("/funding/" + market + "?limit=50"),
-      ]);
-      if (stop) return;
-      const minutes = minuteRes.ok ? await readJson<StoredCandle[]>(minuteRes) : null;
-      if (rows) setPrints(rows.slice(0, 40).map(asPrint));
-      if (rows || minutes) {
-        setSeries((prev) => {
-          let current = prev[selected] || {};
-          if (minutes) current = applyCandles(current, minutes);
-          const seeded = rows
-            ? seed(
-                current,
-                rows.map((row) => ({ height: row.height, price: row.price })),
-              )
-            : current;
-          return { ...prev, [selected]: seeded };
-        });
-      }
-      if (fundRes.ok) setFunding(await readJson<FundingRow[]>(fundRes));
+        if (stop || !rows) return;
+        setPrints(rows.slice(0, 40).map(asPrint));
+        const points = rows.map((row) => ({ height: row.height, price: row.price }));
+        setSeries((prev) => ({ ...prev, [selected]: seed(prev[selected] || {}, points) }));
+      })();
+      const funding = (async () => {
+        const res = await fetch("/funding/" + market + "?limit=50");
+        if (!stop && res.ok) setFunding(await readJson<FundingRow[]>(res));
+      })();
+      await Promise.all([candles, trades, funding]);
     };
     let id = 0;
-    load("all")
+    load(true)
       .then(async () => {
         if (stop) return;
         const res = await fetch("/book/" + encodeURIComponent(selected) + "?levels=20");
@@ -237,7 +255,7 @@ export function App() {
         setBooks((prev) => ({ ...prev, [selected]: book }));
         if (!stop) {
           id = window.setInterval(() => {
-            load(200).catch(() => {});
+            load(false).catch(() => {});
           }, 1000);
         }
       })
@@ -350,51 +368,36 @@ export function App() {
     }
   }
 
-  async function onHex(value: string) {
-    setHex(value);
-    const token = ++keyToken.current;
-    const clean = value.trim().toLowerCase();
-    if (!/^[0-9a-f]{64}$/.test(clean)) {
-      setKey(null);
-      setKeyError(clean ? "key must be 64 hex chars" : "");
-      return;
-    }
-    try {
-      const secret = secretFromHex(clean);
-      const trader = await publicHex(secret);
-      if (token !== keyToken.current) return;
-      setKey({ secret, trader });
-      setKeyError("");
-    } catch (err) {
-      if (token !== keyToken.current) return;
-      setKey(null);
-      setKeyError(errorMessage(err));
-    }
-  }
+  // The trading key comes from a wallet signature the user asks for with "Enable trading".
+  // It is dropped when the wallet disconnects or switches address.
+  useEffect(() => {
+    if (signedFor.current === null || signedFor.current === wallet) return;
+    signedFor.current = null;
+    keyToken.current++;
+    setKey(null);
+    setKeyError("");
+    setSigning(false);
+  }, [wallet]);
 
-  async function onWallet() {
-    if (!wallet) return;
+  async function onWallet(address: string) {
+    signedFor.current = address;
     const token = ++keyToken.current;
+    setKey(null);
+    setKeyError("");
+    setSigning(true);
     try {
-      const signature = await signMessageAsync({ message: keyMessage(wallet) });
+      const signature = await signMessageAsync({ message: keyMessage(address) });
       const secret = await keyFromSignature(signature);
       const trader = await publicHex(secret);
       if (token !== keyToken.current) return;
-      setHex(bytesToHex(secret));
       setKey({ secret, trader });
-      setKeyError("");
     } catch (err) {
-      if (token === keyToken.current) setKeyError(errorMessage(err).split("\n")[0]);
+      if (token !== keyToken.current) return;
+      signedFor.current = null;
+      setKeyError(errorMessage(err).split("\n")[0]);
+    } finally {
+      if (token === keyToken.current) setSigning(false);
     }
-  }
-
-  async function onGenerate() {
-    const token = ++keyToken.current;
-    const next = await generateKey();
-    if (token !== keyToken.current) return;
-    setHex(next.hex);
-    setKey({ secret: next.secret, trader: next.trader });
-    setKeyError("");
   }
 
   // The form has already turned dollars into a base size on the lot and checked the margin.
@@ -402,7 +405,7 @@ export function App() {
     if (!selected || busy.current) return;
     if (!key) {
       setBad(true);
-      setNote("enter or generate a private key first");
+      setNote("connect a wallet first");
       return;
     }
     if (size <= 0n || price <= 0n) {
@@ -496,7 +499,7 @@ export function App() {
   }
 
   return (
-    <div className="app">
+    <div className="app" style={{ "--dock": dock + "px" } as CSSProperties}>
       <Header
         status={status}
         ws={ws}
@@ -517,21 +520,18 @@ export function App() {
         onPrice={(px) => patch({ price: unscale(px), type: "limit" })}
       />
       <section className="side">
-        <KeyBox
-          hex={hex}
-          trader={key?.trader || ""}
-          error={keyError}
-          onHex={(value) => void onHex(value)}
-          onGenerate={() => void onGenerate()}
+        <Wallet
           wallet={wallet}
-          onWallet={() => void onWallet()}
+          trader={key?.trader ?? ""}
+          account={account}
+          leverage={market?.max_leverage ?? null}
+          error={keyError}
+          // On a page load the address is known while the wallet is still reconnecting, and
+          // signing then fails, so the button waits for "connected".
+          canSign={walletStatus === "connected" && !signing}
+          signing={signing}
+          onSign={() => wallet && void onWallet(wallet)}
         />
-        <div className="pad">
-          <b>account</b> {account ? "" : "none"}
-          <div>collateral {usd(account?.collateral ?? 0)}</div>
-          <div>value {usd(account?.account_value ?? 0)}</div>
-          <div>margin {usd(account?.maintenance_margin ?? 0)}</div>
-        </div>
         <OrderForm
           form={form}
           patch={patch}
@@ -547,7 +547,6 @@ export function App() {
           bad={bad}
           onSubmit={(size, price) => void place(size, price)}
         />
-        <OpenOrders orders={orders} onCancel={(order) => void onCancel(order)} />
       </section>
       <Dock
         tab={tab}
@@ -559,6 +558,17 @@ export function App() {
         onClose={(pos) => void onClose(pos)}
         fills={fills}
         history={history}
+        onResize={(height) => {
+          const next = Math.round(
+            Math.min(Math.max(height, DOCK_MIN), window.innerHeight - DOCK_ROOM),
+          );
+          setDock(next);
+          try {
+            localStorage.setItem(DOCK_KEY, String(next));
+          } catch {
+            /* keep it for this page only */
+          }
+        }}
       />
     </div>
   );

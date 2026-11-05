@@ -4,7 +4,6 @@ import type { FundingRow, MarketInfo, StoredOrder, StoredTrade } from "../types"
 export function OrderHistory({ orders }: { orders: StoredOrder[] }) {
   return (
     <section className="pad grow">
-      <b>history</b>
       <table>
         <thead>
           <tr>
@@ -47,7 +46,6 @@ export function OrderHistory({ orders }: { orders: StoredOrder[] }) {
 export function Fills({ rows }: { rows: StoredTrade[] }) {
   return (
     <section className="pad grow">
-      <b>fills</b>
       <table>
         <thead>
           <tr>
@@ -85,7 +83,6 @@ export function Fills({ rows }: { rows: StoredTrade[] }) {
 export function Funding({ rows, markets }: { rows: FundingRow[]; markets: MarketInfo[] }) {
   return (
     <section className="pad grow">
-      <b>funding</b>
       <table>
         <thead>
           <tr>

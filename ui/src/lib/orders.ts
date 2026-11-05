@@ -77,6 +77,45 @@ export function availableMargin(
   return free > 0n ? free : 0n;
 }
 
+export type Holding = { collateral: bigint; size: bigint; entry: bigint };
+
+// The account after filling `size` (signed: >0 buys) at `price`, as core/state.py _apply_fill.
+export function afterFill(held: Holding, size: bigint, price: bigint, feeBps: bigint): Holding {
+  const abs = (n: bigint) => (n < 0n ? -n : n);
+  const notional = (price * abs(size)) / SCALE;
+  let collateral = held.collateral - (notional * feeBps) / 10_000n;
+  const old = held.size;
+  const next = old + size;
+  if (old === 0n || old > 0n === size > 0n) {
+    return { collateral, size: next, entry: held.entry + notional };
+  }
+  const closing = next === 0n || next > 0n === old > 0n;
+  const closed = closing ? abs(size) : abs(old);
+  const closedEntry = closed === abs(old) ? held.entry : (held.entry * closed) / abs(old);
+  const closedNotional = (price * closed) / SCALE;
+  collateral += old > 0n ? closedNotional - closedEntry : closedEntry - closedNotional;
+  if (next === 0n) return { collateral, size: 0n, entry: 0n };
+  const entry = closing ? held.entry - closedEntry : (price * abs(next)) / SCALE;
+  return { collateral, size: next, entry };
+}
+
+// The mark at which account value falls to maintenance margin, for one market held in cross.
+// Long: C + s*p - E = s*p*mm. Short: C + E - s*p = s*p*mm. Null when flat or never liquidated.
+export function liquidationPrice(held: Holding, maintenanceBps: bigint): bigint | null {
+  const { collateral, size, entry } = held;
+  if (size === 0n) return null;
+  const price =
+    size > 0n
+      ? ((entry - collateral) * SCALE * 10_000n) / (size * (10_000n - maintenanceBps))
+      : ((collateral + entry) * SCALE * 10_000n) / (-size * (10_000n + maintenanceBps));
+  return price > 0n ? price : null;
+}
+
+// "0.0500%" from 5 bps.
+export function bpsPct(bps: number): string {
+  return (bps / 100).toFixed(4) + "%";
+}
+
 const REASONS: Record<string, string> = {
   margin: "not enough margin",
   nonce: "stale nonce, try again",

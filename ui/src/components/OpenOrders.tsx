@@ -9,11 +9,20 @@ type Props = {
 export function OpenOrders({ orders, onCancel }: Props) {
   return (
     <section className="pad grow">
-      <b>cancel</b>
-      {orders.length ? (
-        <table>
-          <tbody>
-            {orders.map((order) => (
+      <table>
+        <thead>
+          <tr>
+            <td className="l">market</td>
+            <td>id</td>
+            <td>side</td>
+            <td>price</td>
+            <td>size</td>
+            <td></td>
+          </tr>
+        </thead>
+        <tbody>
+          {orders.length ? (
+            orders.map((order) => (
               <tr key={order.market + ":" + order.id}>
                 <td className="l">{order.market}</td>
                 <td>{String(order.id)}</td>
@@ -26,12 +35,16 @@ export function OpenOrders({ orders, onCancel }: Props) {
                   </button>
                 </td>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      ) : (
-        <div>none</div>
-      )}
+            ))
+          ) : (
+            <tr>
+              <td className="l" colSpan={6}>
+                none
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
     </section>
   );
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { fmt, parseScaled, pct, tryScaled, unscale, usd, usdSign } from "./scale";
+import { fmt, parseScaled, pct, shorten, tryScaled, unscale, usd, usdSign } from "./scale";
 
 describe("scale", () => {
   it("shows six decimal places and a leading minus", () => {
@@ -40,5 +40,16 @@ describe("usd", () => {
   it("signs a gain", () => {
     expect(usdSign(2_500_000n)).toBe("+$2.50");
     expect(usdSign(-2_500_000n)).toBe("-$2.50");
+  });
+});
+
+describe("shorten", () => {
+  it("keeps the ends of a wallet address and a trader key", () => {
+    expect(shorten("0x1234567890abcdef1234567890abcdef12345678", 5, 3)).toBe("0x123...678");
+    expect(shorten("a".repeat(30) + "1234", 4, 4)).toBe("aaaa...1234");
+  });
+
+  it("leaves a value that would not get shorter", () => {
+    expect(shorten("0x1234567", 5, 3)).toBe("0x1234567");
   });
 });

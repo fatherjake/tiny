@@ -14,6 +14,25 @@ describe("applyCandles", () => {
     ]);
   });
 
+  it("merges a refresh of the latest minutes into the bars already there", () => {
+    const row = (ts: number, close: number) => ({
+      ts,
+      open: 1_000_000,
+      high: close,
+      low: 1_000_000,
+      close,
+    });
+    const first = applyCandles({}, [row(1_700_000_000_000, 1_000_000), row(1_700_000_060_000, 2_000_000)]);
+    const next = applyCandles(first, [row(1_700_000_060_000, 3_000_000), row(1_700_000_120_000, 4_000_000)]);
+    expect(next.bars?.map((bar) => [bar.time, bar.close])).toEqual([
+      [1_700_000_000, 1],
+      [1_700_000_060, 3],
+      [1_700_000_120, 4],
+    ]);
+    expect(applyCandles(first, [])).toBe(first);
+    expect(applyCandles({}, []).bars).toEqual([]);
+  });
+
   it("keeps each second as its own candle", () => {
     const next = applyCandles({}, [
       { ts: 1_700_000_000_000, open: 1_000_000, high: 1_000_000, low: 1_000_000, close: 1_000_000 },

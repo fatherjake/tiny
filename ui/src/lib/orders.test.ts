@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  afterFill,
   availableMargin,
+  bpsPct,
   closeOrder,
   currentPrice,
+  liquidationPrice,
   marketPrice,
   midPrice,
   outcome,
@@ -36,6 +39,8 @@ describe("currentPrice", () => {
     funding_index: null,
     funding_ts: null,
     funding_base: null,
+    maker_fee_bps: 2,
+    taker_fee_bps: 5,
   };
 
   it("uses the mark snapped down to the tick, falling back to the oracle", () => {
@@ -116,6 +121,8 @@ describe("availableMargin", () => {
       funding_index: null,
       funding_ts: null,
       funding_base: null,
+    maker_fee_bps: 2,
+    taker_fee_bps: 5,
     },
   ];
   const account = {
@@ -134,5 +141,62 @@ describe("availableMargin", () => {
 
   it("is zero without an account", () => {
     expect(availableMargin(null, markets, [])).toBe(0n);
+  });
+});
+
+describe("afterFill", () => {
+  const flat = { collateral: 1_000_000_000n, size: 0n, entry: 0n };
+
+  it("opens, charges the fee, and adds to the entry", () => {
+    // Buy 0.1 at $50,000: $5,000 notional, $2.50 taker fee at 5 bps.
+    expect(afterFill(flat, 100_000n, 50_000_000_000n, 5n)).toEqual({
+      collateral: 997_500_000n,
+      size: 100_000n,
+      entry: 5_000_000_000n,
+    });
+  });
+
+  it("realises pnl on a partial close and keeps the rest of the entry", () => {
+    const long = { collateral: 1_000_000_000n, size: 200_000n, entry: 10_000_000_000n };
+    // Sell half at $51,000, no fee: $100 profit, half the entry left.
+    expect(afterFill(long, -100_000n, 51_000_000_000n, 0n)).toEqual({
+      collateral: 1_100_000_000n,
+      size: 100_000n,
+      entry: 5_000_000_000n,
+    });
+  });
+
+  it("flips through flat and enters the new side at the fill", () => {
+    const long = { collateral: 1_000_000_000n, size: 100_000n, entry: 5_000_000_000n };
+    expect(afterFill(long, -300_000n, 50_000_000_000n, 0n)).toEqual({
+      collateral: 1_000_000_000n,
+      size: -200_000n,
+      entry: 10_000_000_000n,
+    });
+  });
+});
+
+describe("liquidationPrice", () => {
+  it("solves value = maintenance for a long and a short", () => {
+    // 0.2 BTC long, $10,000 entry, $1,000 collateral, 3% maintenance:
+    // p = (10,000 - 1,000) / (0.2 * 0.97) = $46,391.75...
+    const long = { collateral: 1_000_000_000n, size: 200_000n, entry: 10_000_000_000n };
+    expect(liquidationPrice(long, 300n)).toBe(46_391_752_577n);
+    // Short: p = (1,000 + 10,000) / (0.2 * 1.03) = $53,398.05...
+    const short = { ...long, size: -200_000n };
+    expect(liquidationPrice(short, 300n)).toBe(53_398_058_252n);
+  });
+
+  it("is null when flat or when the long can never fall far enough", () => {
+    expect(liquidationPrice({ collateral: 1n, size: 0n, entry: 0n }, 300n)).toBe(null);
+    const covered = { collateral: 20_000_000_000n, size: 200_000n, entry: 10_000_000_000n };
+    expect(liquidationPrice(covered, 300n)).toBe(null);
+  });
+});
+
+describe("bpsPct", () => {
+  it("shows bps as a percentage to four places", () => {
+    expect(bpsPct(5)).toBe("0.0500%");
+    expect(bpsPct(2)).toBe("0.0200%");
   });
 });

@@ -33,10 +33,6 @@ export function Account({ account, markets, onClose }: Props) {
   };
   return (
     <section className="pad grow">
-      <b>account</b> {account ? "" : "none"}
-      <div>collateral {usd(account?.collateral ?? 0)}</div>
-      <div>account value {usd(account?.account_value ?? 0)}</div>
-      <div>maintenance margin {usd(account?.maintenance_margin ?? 0)}</div>
       <table>
         <thead>
           <tr>

@@ -1,4 +1,4 @@
-:root { color-scheme: light; --line: rgb(0 0 0 / 25%); }
+:root { color-scheme: light; --line: rgb(0 0 0 / 25%); --muted: rgb(0 0 0 / 55%); }
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; overflow: hidden; }
 body {
@@ -45,7 +45,7 @@ table, thead, tbody, tr, th, td { border-color: var(--line); }
   height: 100vh;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 420px 320px;
-  grid-template-rows: auto minmax(0, 1fr) 200px;
+  grid-template-rows: auto minmax(0, 1fr) var(--dock, 200px);
 }
 header {
   grid-column: 1 / -1;
@@ -95,7 +95,8 @@ a { color: #000; }
 .dock {
   grid-column: 1 / -1;
   grid-row: 3;
-  border-top: 1px solid var(--line);
+  position: relative;
+  border-top: 3px solid var(--line);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   min-height: 0;
@@ -122,3 +123,12 @@ button.px { border: 0; padding: 0; background: transparent; }
 .book button.px.bid, .tape td.bid { color: #18803a; }
 .book tr.mid td { font-weight: bold; }
 .row.spread { justify-content: space-between; }
+input[type="checkbox"] { appearance: auto; -webkit-appearance: checkbox; margin: 0; padding: 0; border: 0; }
+input.amount { flex: 1; min-width: 0; text-align: right; }
+.grip { position: absolute; top: -6px; left: 0; right: 0; height: 9px; cursor: row-resize; touch-action: none; z-index: 2; }
+button.dark { background: #000; color: #fff; border-color: #000; }
+button.wide { display: block; width: 100%; margin-top: 6px; padding: 5px 6px; }
+.muted { color: var(--muted); font-size: 11px; }
+.stamp { text-align: center; padding-top: 4px; }
+button.dark:disabled { background: #000; color: #fff; opacity: 0.6; }
+.plot > .loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 3; }

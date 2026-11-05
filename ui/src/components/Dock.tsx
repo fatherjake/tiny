@@ -23,6 +23,8 @@ type Props = {
   onClose: (pos: Position) => void;
   fills: StoredTrade[];
   history: StoredOrder[];
+  // Called with the height the dock should take, from where its top edge is dragged to.
+  onResize: (height: number) => void;
 };
 
 export function Dock({
@@ -35,9 +37,19 @@ export function Dock({
   onClose,
   fills,
   history,
+  onResize,
 }: Props) {
   return (
     <section className="dock">
+      <div
+        className="grip"
+        onPointerDown={(event) => event.currentTarget.setPointerCapture(event.pointerId)}
+        onPointerMove={(event) => {
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+            onResize(window.innerHeight - event.clientY);
+          }
+        }}
+      />
       <div className="tabs">
         {DOCK_TABS.map((name) => (
           <button

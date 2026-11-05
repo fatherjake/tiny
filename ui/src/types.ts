@@ -11,6 +11,9 @@ export type MarketInfo = {
   funding_index: Scaled | null;
   funding_ts: number | null;
   funding_base: FundingRow | null;
+  // Missing from a sim started before fees were served.
+  maker_fee_bps?: number;
+  taker_fee_bps?: number;
 };
 
 export type Level = [Scaled, Scaled];

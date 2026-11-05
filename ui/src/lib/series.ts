@@ -42,9 +42,14 @@ export type CandleRow = {
   close: Scaled;
 };
 
+// Rows replace any bars from the first row's time on. Older bars are kept, so a refresh can
+// send only the latest minutes.
 export function applyCandles(book: Series, rows: CandleRow[]): Series {
   const ordered = [...rows].sort((a, b) => Number(a.ts) - Number(b.ts));
-  const bars: NonNullable<Series["bars"]> = [];
+  // An empty first answer still marks the candles as loaded.
+  if (ordered.length === 0) return book.bars ? book : { ...book, bars: [] };
+  const from = Math.floor(Number(ordered[0].ts) / 1000);
+  const bars: NonNullable<Series["bars"]> = (book.bars ?? []).filter((bar) => bar.time < from);
   for (const row of ordered) {
     const time = Math.floor(Number(row.ts) / 1000);
     const bar = {
