@@ -24,7 +24,7 @@ from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from core.consensus import GENESIS, Consensus
 from core.net import Transport
 from core.state import State
-from core.store import MemoryStore, Store
+from core.store import MemoryStore, Store, with_progress
 from core.types import (
     QC,
     Block,
@@ -334,7 +334,7 @@ class Node:
         """Replay `blocks`, or take `state` as already having applied them."""
         if state is not None:
             self.state = state
-        for block in blocks:
+        for block in with_progress(blocks, len(blocks), f"node {self.id}: replayed blocks"):
             if state is None:
                 self.state.apply_block(block)
             self.by_height[block.height] = block

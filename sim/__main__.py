@@ -15,6 +15,8 @@ import argparse
 import logging
 import threading
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 
 import uvicorn
 
@@ -42,6 +44,14 @@ def demo_key(index: int) -> bytes:
     return (1_000 + index).to_bytes(32, "big")
 
 
+@contextmanager
+def stage(name: str) -> Iterator[None]:
+    log.info("%s...", name)
+    start = time.monotonic()
+    yield
+    log.info("%s: done in %.1fs", name, time.monotonic() - start)
+
+
 def build(
     n: int,
     delay_ms: tuple[int, int],
@@ -55,32 +65,41 @@ def build(
     pubs = {i: public_key(key) for i, key in enumerate(keys)}
     feed = FakePriceFeed({MARKET.name: START_PRICE}, clock=lambda: net.now, seed=seed)
     validators = {pub.hex() for pub in pubs.values()}
-    nodes = [
-        Node(
-            i,
-            n,
-            keys[i],
-            pubs,
-            [MARKET],
-            net.endpoint(i),
-            feed.tick,
-            SqliteStore(db, [MARKET], validators) if db and i == 0 else None,
-        )
-        for i in range(n)
-    ]
+    with stage(f"creating {n} nodes"):
+        nodes = [
+            Node(
+                i,
+                n,
+                keys[i],
+                pubs,
+                [MARKET],
+                net.endpoint(i),
+                feed.tick,
+                SqliteStore(db, [MARKET], validators) if db and i == 0 else None,
+            )
+            for i in range(n)
+        ]
     funded = [demo_key(i) for i in range(traders)]
-    credit_accounts(nodes, funded, MOCK_COLLATERAL)
+    with stage(f"funding {traders} traders"):
+        credit_accounts(nodes, funded, MOCK_COLLATERAL)
     if db:
-        saved = nodes[0].store.committed_blocks()
+        with stage(f"reading saved blocks from {db}"):
+            saved = nodes[0].store.committed_blocks()
         tip = nodes[0].store.tip_qc()
         if saved and tip is not None and tip.block_hash == saved[-1].hash:
             check_clock(saved[-1])  # before the replay, which can take a while
             # Every node would replay to the same state, so replay once and copy it.
-            log.info("replaying %d blocks from %s", len(saved), db)
-            nodes[0].resume(saved, tip)
-            for node in nodes[1:]:
-                copy = State.from_bytes(nodes[0].state.to_bytes())
-                node.resume(saved, tip, copy)
+            with stage(f"replaying {len(saved)} blocks"):
+                nodes[0].resume(saved, tip)
+            with stage(f"copying state to {n - 1} other nodes"):
+                for node in nodes[1:]:
+                    copy = State.from_bytes(nodes[0].state.to_bytes())
+                    node.resume(saved, tip, copy)
+            log.info("resumed at height %d", nodes[0].state.height)
+        elif saved:
+            log.warning("%d saved blocks have no matching tip QC, not resuming", len(saved))
+        else:
+            log.info("no saved blocks, starting from genesis")
     for node in nodes:
         node.start()
     return net, nodes, funded

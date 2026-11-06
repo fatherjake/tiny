@@ -6,9 +6,11 @@ tables and `rebuild_indexes` replays the block log from genesis.
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 import threading
-from collections.abc import Iterable, Sequence
+import time
+from collections.abc import Iterable, Iterator, Sequence
 from pathlib import Path
 from typing import Protocol
 from urllib.request import pathname2url
@@ -23,6 +25,24 @@ _JSON = ConfigDict(strict=True, val_json_bytes="hex", ser_json_bytes="hex")
 Row = dict[str, object]
 Cursor = tuple[int, int, int]
 OrderCursor = tuple[int, int]
+
+log = logging.getLogger(__name__)
+
+
+def with_progress[T](
+    items: Iterable[T], total: int, label: str, every_s: float = 5.0
+) -> Iterator[T]:
+    """Yield `items`, logging how far through `total` we are. Quick loops log nothing."""
+    start = last = time.monotonic()
+    for done, item in enumerate(items, start=1):
+        yield item
+        now = time.monotonic()
+        if now - last >= every_s:
+            last = now
+            left = (total - done) * (now - start) / done
+            log.info(
+                "%s %d/%d (%d%%), about %ds left", label, done, total, 100 * done / total, left
+            )
 
 
 class _BlockJson(RootModel[Block]):
@@ -439,8 +459,11 @@ class SqliteStore:
 
     def committed_blocks(self) -> tuple[Block, ...]:
         with self._lock:
+            total = self._db.execute("SELECT COUNT(*) FROM blocks").fetchone()[0]
             rows = self._db.execute("SELECT body FROM blocks ORDER BY height")
-            return tuple(decode_block(bytes(row[0])) for row in rows)
+            return tuple(
+                decode_block(bytes(row[0])) for row in with_progress(rows, total, "read blocks")
+            )
 
     def tip_qc(self) -> QC | None:
         with self._lock:
