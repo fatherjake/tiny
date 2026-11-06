@@ -1,8 +1,10 @@
+import logging
 import time
 
 import pytest
 
 from core.node import Node, public_key
+from core.store import with_progress
 from core.types import USDC_SCALE
 from sim.__main__ import MARKET, build, wall_clock
 from sim.bots import Bot
@@ -102,6 +104,41 @@ def test_wall_clock_refuses_a_chain_stamped_from_1970() -> None:
     assert nodes[0].state.height > 0
     with pytest.raises(RuntimeError, match="1970"):
         wall_clock(nodes)
+
+
+def test_restart_logs_each_startup_stage(tmp_path, caplog) -> None:
+    db = str(tmp_path / "sim.sqlite")
+    with caplog.at_level(logging.INFO):
+        net, nodes, _funded = build(4, (0, 0), 0.0, seed=0, traders=0, db=db)
+        assert "no saved blocks, starting from genesis" in caplog.messages
+        wall_clock(nodes)
+        net.run_for(1_000)
+        height = nodes[0].state.height
+        assert height > 0
+        nodes[0].store.close()
+
+        caplog.clear()
+        _net2, nodes2, _funded = build(4, (0, 0), 0.0, seed=0, traders=0, db=db)
+        nodes2[0].store.close()
+    for expected in (
+        f"reading saved blocks from {db}...",
+        f"replaying {height} blocks...",
+        "copying state to 3 other nodes...",
+        f"resumed at height {height}",
+    ):
+        assert expected in caplog.messages
+
+
+def test_a_slow_loop_logs_how_far_it_has_got(caplog) -> None:
+    with caplog.at_level(logging.INFO):
+        assert list(with_progress("abcd", 4, "read blocks", every_s=0)) == list("abcd")
+    assert caplog.messages[1].startswith("read blocks 2/4 (50%), about ")
+
+
+def test_a_quick_loop_logs_nothing(caplog) -> None:
+    with caplog.at_level(logging.INFO):
+        list(with_progress("abcd", 4, "read blocks"))
+    assert caplog.messages == []
 
 
 def test_restart_refuses_a_1970_db_before_replaying_it(tmp_path, monkeypatch) -> None:
