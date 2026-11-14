@@ -1,5 +1,14 @@
-import type { AccountView, Depth, MarketInfo, OpenOrder, Position, StoredOrder } from "../types";
-import { SCALE, bi } from "./scale";
+import type {
+  AccountView,
+  Depth,
+  MarketInfo,
+  OpenOrder,
+  OrderDraft,
+  Position,
+  Scaled,
+  StoredOrder,
+} from "../types";
+import { SCALE, bi, tryScaled } from "./scale";
 
 const MARKET_SLIPPAGE_BPS = 100n;
 
@@ -75,6 +84,86 @@ export function availableMargin(
   }
   const free = bi(account.account_value ?? 0) - used;
   return free > 0n ? free : 0n;
+}
+
+export type OrderPreview = {
+  available: bigint;
+  held: Scaled;
+  mid: bigint | null;
+  sendPrice: bigint | null;
+  size: bigint | null;
+  notional: bigint | null;
+  requiredMargin: bigint | null;
+  maxUsd: bigint | null;
+  liquidation: bigint | null;
+  problem: string;
+  short: boolean;
+};
+
+export function previewOrder(
+  form: OrderDraft,
+  market: MarketInfo | null,
+  markets: MarketInfo[],
+  book: Depth | null,
+  account: AccountView | null,
+  orders: OpenOrder[],
+): OrderPreview {
+  const lev = Math.max(1, market?.max_leverage ?? 1);
+  const available = availableMargin(account, markets, orders);
+  const held = market ? account?.positions?.[market.name]?.size ?? 0 : 0;
+  const cap = form.type === "market" ? marketPrice(form.side, book) : null;
+  const touch = form.side === "buy" ? book?.best_ask : book?.best_bid;
+  const sendPrice = form.type === "limit" ? tryScaled(form.price) : cap;
+  const sizePrice = form.type === "limit" ? sendPrice : touch == null ? null : bi(touch);
+  const dollars = tryScaled(form.usd);
+  const size =
+    dollars != null && sizePrice != null && market ? sizeFromUsd(dollars, sizePrice, bi(market.lot_size)) : null;
+  const notional = size != null && sizePrice != null ? (size * sizePrice) / SCALE : null;
+  // The chain reserves initial margin at the submitted price. For a market order that is the
+  // slippage cap, even though sizing and the expected fill use the touch.
+  const requiredMargin =
+    size != null && sendPrice != null ? (size * sendPrice) / SCALE / BigInt(lev) : null;
+  const maxUsd =
+    sizePrice != null && sendPrice != null
+      ? (available * BigInt(lev) * sizePrice) / sendPrice
+      : null;
+  const pos = market ? account?.positions?.[market.name] : undefined;
+  let liquidation: bigint | null = null;
+  if (market && size != null && size > 0n && sizePrice != null) {
+    const fee = BigInt((form.type === "market" ? market.taker_fee_bps : market.maker_fee_bps) ?? 0);
+    liquidation = liquidationPrice(
+      afterFill(
+        {
+          collateral: bi(account?.collateral ?? 0),
+          size: bi(pos?.size ?? 0),
+          entry: bi(pos?.entry_notional ?? 0),
+        },
+        form.side === "buy" ? size : -size,
+        sizePrice,
+        fee,
+      ),
+      BigInt(market.maintenance_margin_bps),
+    );
+  }
+  let problem = gridNote(market, null, sendPrice, form.type);
+  if (!problem && form.type === "market" && cap == null) problem = "no quote";
+  if (!problem && dollars == null) problem = "enter a size in USD";
+  if (!problem && size === 0n) problem = "size is below one lot";
+  const short = !problem && !form.reduceOnly && requiredMargin != null && requiredMargin > available;
+  if (short) problem = "margin";
+  return {
+    available,
+    held,
+    mid: midPrice(market, book),
+    sendPrice,
+    size,
+    notional,
+    requiredMargin,
+    maxUsd,
+    liquidation,
+    problem,
+    short,
+  };
 }
 
 export type Holding = { collateral: bigint; size: bigint; entry: bigint };

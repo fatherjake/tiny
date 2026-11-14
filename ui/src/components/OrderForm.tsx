@@ -1,16 +1,7 @@
 import type { FormEvent } from "react";
 
-import {
-  afterFill,
-  availableMargin,
-  bpsPct,
-  gridNote,
-  liquidationPrice,
-  marketPrice,
-  midPrice,
-  sizeFromUsd,
-} from "../lib/orders";
-import { SCALE, bi, tryScaled, unscale, usd } from "../lib/scale";
+import { bpsPct, previewOrder } from "../lib/orders";
+import { unscale, usd } from "../lib/scale";
 import type { AccountView, Depth, MarketInfo, OpenOrder, OrderDraft } from "../types";
 
 type Props = {
@@ -45,55 +36,14 @@ export function OrderForm({
   onSubmit,
 }: Props) {
   const base = market?.name.split("-")[0] ?? "";
-  // Fixed at the market's max for now: the chain margins every order there.
-  const lev = Math.max(1, market?.max_leverage ?? 1);
-  const available = availableMargin(account, markets, orders);
-  const held = market ? account?.positions?.[market.name]?.size ?? 0 : 0;
-
-  // A market order is capped past the touch but sized and margined at the touch.
-  const cap = form.type === "market" ? marketPrice(form.side, book) : null;
-  const touch = form.side === "buy" ? book?.best_ask : book?.best_bid;
-  const sendPx = form.type === "limit" ? tryScaled(form.price) : cap;
-  const sizePx = form.type === "limit" ? sendPx : touch == null ? null : bi(touch);
-  const dollars = tryScaled(form.usd);
-  const size =
-    dollars != null && sizePx != null && market ? sizeFromUsd(dollars, sizePx, bi(market.lot_size)) : null;
-  const notional = size != null && sizePx != null ? (size * sizePx) / SCALE : null;
-  const needs = notional == null ? null : notional / BigInt(lev);
-
-  // Liquidation if this order fills at the price it is sized at. A market order pays the
-  // taker fee, a limit order is taken to rest and pay the maker fee. Other markets are left
-  // out, which is exact while the sim has one.
-  const pos = market ? account?.positions?.[market.name] : undefined;
-  let liquidation: bigint | null = null;
-  if (market && size != null && size > 0n && sizePx != null) {
-    const fee = BigInt((form.type === "market" ? market.taker_fee_bps : market.maker_fee_bps) ?? 0);
-    const after = afterFill(
-      {
-        collateral: bi(account?.collateral ?? 0),
-        size: bi(pos?.size ?? 0),
-        entry: bi(pos?.entry_notional ?? 0),
-      },
-      form.side === "buy" ? size : -size,
-      sizePx,
-      fee,
-    );
-    liquidation = liquidationPrice(after, BigInt(market.maintenance_margin_bps));
-  }
-
-  let problem = gridNote(market, null, sendPx, form.type);
-  if (!problem && form.type === "market" && cap == null) problem = "no quote";
-  if (!problem && dollars == null) problem = "enter a size in USD";
-  if (!problem && size === 0n) problem = "size is below one lot";
-  // Not enough margin blocks the order like any problem, but only the red margin row shows it.
-  const short = !problem && !form.reduceOnly && needs != null && needs > available;
-  if (short) problem = "margin";
+  const preview = previewOrder(form, market, markets, book, account, orders);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (!pending && !problem && size != null && sendPx != null) onSubmit(size, sendPx);
+    if (!pending && !preview.problem && preview.size != null && preview.sendPrice != null) {
+      onSubmit(preview.size, preview.sendPrice);
+    }
   };
-  const mid = midPrice(market, book);
   return (
     <form className="pad" onSubmit={submit}>
       <div className="row">
@@ -130,12 +80,12 @@ export function OrderForm({
       </div>
       <div className="row spread">
         <span>available to trade</span>
-        <span>{usd(available)}</span>
+        <span>{usd(preview.available)}</span>
       </div>
       <div className="row spread">
         <span>current position</span>
         <span>
-          {unscale(held)} {base}
+          {unscale(preview.held)} {base}
         </span>
       </div>
       {form.type === "limit" ? (
@@ -144,8 +94,8 @@ export function OrderForm({
           <input className="amount" value={form.price} onInput={(event) => patch({ price: event.currentTarget.value })} />
           <button
             type="button"
-            disabled={mid == null}
-            onClick={() => mid != null && patch({ price: unscale(mid) })}
+            disabled={preview.mid == null}
+            onClick={() => preview.mid != null && patch({ price: unscale(preview.mid) })}
           >
             mid
           </button>
@@ -156,8 +106,8 @@ export function OrderForm({
         <input className="amount" value={form.usd} onInput={(event) => patch({ usd: event.currentTarget.value })} />
         <button
           type="button"
-          disabled={available === 0n}
-          onClick={() => patch({ usd: unscale(available * BigInt(lev)) })}
+          disabled={preview.maxUsd == null || preview.maxUsd === 0n}
+          onClick={() => preview.maxUsd != null && patch({ usd: unscale(preview.maxUsd) })}
         >
           max
         </button>
@@ -174,21 +124,21 @@ export function OrderForm({
       </div>
       <div className="row spread">
         <span>liquidation price</span>
-        <span>{usd(liquidation)}</span>
+        <span>{usd(preview.liquidation)}</span>
       </div>
       <div className="row spread">
         <span>order size</span>
         <span>
-          {size == null ? "-" : unscale(size)} {base}
+          {preview.size == null ? "-" : unscale(preview.size)} {base}
         </span>
       </div>
       <div className="row spread">
         <span>order value</span>
-        <span>{usd(notional)}</span>
+        <span>{usd(preview.notional)}</span>
       </div>
-      <div className={short ? "row spread error" : "row spread"}>
+      <div className={preview.short ? "row spread error" : "row spread"}>
         <span>margin required</span>
-        <span>{usd(needs)}</span>
+        <span>{usd(preview.requiredMargin)}</span>
       </div>
       <div className="row spread">
         <span>fees</span>
@@ -198,7 +148,7 @@ export function OrderForm({
             : "-"}
         </span>
       </div>
-      {problem && !short ? <div>{problem}</div> : null}
+      {preview.problem && !preview.short ? <div>{preview.problem}</div> : null}
       <button type="submit" className="dark wide">
         {pending ? "Sending Order" : "Place Order"}
       </button>

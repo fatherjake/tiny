@@ -10,6 +10,7 @@ import {
   marketPrice,
   midPrice,
   outcome,
+  previewOrder,
   sizeFromUsd,
 } from "./orders";
 
@@ -141,6 +142,43 @@ describe("availableMargin", () => {
 
   it("is zero without an account", () => {
     expect(availableMargin(null, markets, [])).toBe(0n);
+  });
+});
+
+describe("previewOrder", () => {
+  const market = {
+    name: "BTC-PERP",
+    tick_size: 1n,
+    lot_size: 1n,
+    max_leverage: 10,
+    maintenance_margin_bps: 300,
+    oracle_price: 100_000_000n,
+    mark_price: 100_000_000n,
+    funding_index: null,
+    funding_ts: null,
+    funding_base: null,
+    maker_fee_bps: 2,
+    taker_fee_bps: 5,
+  };
+
+  it("reserves market-order margin at the submitted buy cap, not the touch", () => {
+    const preview = previewOrder(
+      { side: "buy", type: "market", usd: "100", price: "", reduceOnly: false },
+      market,
+      [market],
+      { best_bid: 99_000_000n, best_ask: 100_000_000n },
+      {
+        trader: "t",
+        collateral: 10_000_000n,
+        nonce: 0,
+        account_value: 10_000_000n,
+      },
+      [],
+    );
+    expect(preview.notional).toBe(100_000_000n);
+    expect(preview.requiredMargin).toBe(10_100_000n);
+    expect(preview.maxUsd).toBe(99_009_900n);
+    expect(preview.problem).toBe("margin");
   });
 });
 
