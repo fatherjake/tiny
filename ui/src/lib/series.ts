@@ -14,7 +14,11 @@ export function spreadMid(book: Depth | null | undefined): Spread {
   let pct = "-";
   if (mid > 0n) {
     const milli = (spread * 100000n) / mid;
-    pct = (milli / 1000n).toString() + "." + (milli % 1000n).toString().padStart(3, "0") + "%";
+    pct =
+      (milli / 1000n).toString() +
+      "." +
+      (milli % 1000n).toString().padStart(3, "0") +
+      "%";
   }
   return { spread, mid, pct };
 }
@@ -28,9 +32,9 @@ function noteBlock(book: Series, price: Scaled, height: number): Series {
   const last = lastOf(ticks);
   if (last && height < last.time) return book;
   const value = Number(bi(price)) / 1e6;
-  const next = (last && last.time === height ? ticks.slice(0, -1) : ticks).concat([
-    { time: height, value },
-  ]);
+  const next = (
+    last && last.time === height ? ticks.slice(0, -1) : ticks
+  ).concat([{ time: height, value }]);
   return { ...book, ticks: next };
 }
 
@@ -49,7 +53,9 @@ export function applyCandles(book: Series, rows: CandleRow[]): Series {
   // An empty first answer still marks the candles as loaded.
   if (ordered.length === 0) return book.bars ? book : { ...book, bars: [] };
   const from = Math.floor(Number(ordered[0].ts) / 1000);
-  const bars: NonNullable<Series["bars"]> = (book.bars ?? []).filter((bar) => bar.time < from);
+  const bars: NonNullable<Series["bars"]> = (book.bars ?? []).filter(
+    (bar) => bar.time < from,
+  );
   for (const row of ordered) {
     const time = Math.floor(Number(row.ts) / 1000);
     const bar = {
@@ -84,5 +90,8 @@ export function rememberPrint(
   trade: { price?: Scaled | null; height?: number },
 ): Record<string, Series> {
   if (trade.price == null || trade.height == null) return series;
-  return { ...series, [market]: noteBlock(series[market] || {}, trade.price, trade.height) };
+  return {
+    ...series,
+    [market]: noteBlock(series[market] || {}, trade.price, trade.height),
+  };
 }

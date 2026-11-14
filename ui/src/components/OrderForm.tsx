@@ -2,7 +2,13 @@ import type { FormEvent } from "react";
 
 import { bpsPct, previewOrder } from "../lib/orders";
 import { unscale, usd } from "../lib/scale";
-import type { AccountView, Depth, MarketInfo, OpenOrder, OrderDraft } from "../types";
+import type {
+  AccountView,
+  Depth,
+  MarketInfo,
+  OpenOrder,
+  OrderDraft,
+} from "../types";
 
 type Props = {
   form: OrderDraft;
@@ -40,7 +46,12 @@ export function OrderForm({
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (!pending && !preview.problem && preview.size != null && preview.sendPrice != null) {
+    if (
+      !pending &&
+      !preview.problem &&
+      preview.size != null &&
+      preview.sendPrice != null
+    ) {
       onSubmit(preview.size, preview.sendPrice);
     }
   };
@@ -91,11 +102,17 @@ export function OrderForm({
       {form.type === "limit" ? (
         <div className="row">
           <span>price (USD)</span>
-          <input className="amount" value={form.price} onInput={(event) => patch({ price: event.currentTarget.value })} />
+          <input
+            className="amount"
+            value={form.price}
+            onInput={(event) => patch({ price: event.currentTarget.value })}
+          />
           <button
             type="button"
             disabled={preview.mid == null}
-            onClick={() => preview.mid != null && patch({ price: unscale(preview.mid) })}
+            onClick={() =>
+              preview.mid != null && patch({ price: unscale(preview.mid) })
+            }
           >
             mid
           </button>
@@ -103,11 +120,17 @@ export function OrderForm({
       ) : null}
       <div className="row">
         <span>size (USD)</span>
-        <input className="amount" value={form.usd} onInput={(event) => patch({ usd: event.currentTarget.value })} />
+        <input
+          className="amount"
+          value={form.usd}
+          onInput={(event) => patch({ usd: event.currentTarget.value })}
+        />
         <button
           type="button"
           disabled={preview.maxUsd == null || preview.maxUsd === 0n}
-          onClick={() => preview.maxUsd != null && patch({ usd: unscale(preview.maxUsd) })}
+          onClick={() =>
+            preview.maxUsd != null && patch({ usd: unscale(preview.maxUsd) })
+          }
         >
           max
         </button>
@@ -117,7 +140,9 @@ export function OrderForm({
           <input
             type="checkbox"
             checked={form.reduceOnly}
-            onChange={(event) => patch({ reduceOnly: event.currentTarget.checked })}
+            onChange={(event) =>
+              patch({ reduceOnly: event.currentTarget.checked })
+            }
           />
           reduce only
         </label>
@@ -144,7 +169,9 @@ export function OrderForm({
         <span>fees</span>
         <span>
           {market?.taker_fee_bps != null && market.maker_fee_bps != null
-            ? bpsPct(market.taker_fee_bps) + " / " + bpsPct(market.maker_fee_bps)
+            ? bpsPct(market.taker_fee_bps) +
+              " / " +
+              bpsPct(market.maker_fee_bps)
             : "-"}
         </span>
       </div>

@@ -43,7 +43,9 @@ export function Dock({
     <section className="dock">
       <div
         className="grip"
-        onPointerDown={(event) => event.currentTarget.setPointerCapture(event.pointerId)}
+        onPointerDown={(event) =>
+          event.currentTarget.setPointerCapture(event.pointerId)
+        }
         onPointerMove={(event) => {
           if (event.currentTarget.hasPointerCapture(event.pointerId)) {
             onResize(window.innerHeight - event.clientY);
@@ -62,7 +64,9 @@ export function Dock({
           </button>
         ))}
       </div>
-      <div className="pane">{pane(tab, account, markets, orders, onCancel, onClose, fills, history)}</div>
+      <div className="pane">
+        {pane(tab, account, markets, orders, onCancel, onClose, fills, history)}
+      </div>
     </section>
   );
 }

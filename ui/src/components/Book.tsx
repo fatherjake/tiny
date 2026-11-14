@@ -29,14 +29,19 @@ export function Book({ book, onPrice }: Props) {
   const askRows = totals(book?.asks ?? []).reverse();
   const bidRows = totals(book?.bids ?? []);
   let max = 1n;
-  for (const row of askRows.concat(bidRows)) if (row.total > max) max = row.total;
+  for (const row of askRows.concat(bidRows))
+    if (row.total > max) max = row.total;
   const levelRow = (row: Row, side: "ask" | "bid", key: string) => {
     let pct = Number((row.total * 100n) / max);
     if (row.total > 0n && pct < 1) pct = 1;
     return (
       <tr key={key} className={side} style={depthStyle(pct)}>
         <td className="l">
-          <button type="button" className={"px " + side} onClick={() => onPrice(row.price)}>
+          <button
+            type="button"
+            className={"px " + side}
+            onClick={() => onPrice(row.price)}
+          >
             {usd(row.price)}
           </button>
         </td>
@@ -56,7 +61,9 @@ export function Book({ book, onPrice }: Props) {
             <td>Total</td>
           </tr>
         </thead>
-        <tbody className="asks">{askRows.map((row) => levelRow(row, "ask", "a" + row.price))}</tbody>
+        <tbody className="asks">
+          {askRows.map((row) => levelRow(row, "ask", "a" + row.price))}
+        </tbody>
         <tbody>
           <tr className="mid">
             <td className="l">Spread</td>
@@ -64,7 +71,9 @@ export function Book({ book, onPrice }: Props) {
             <td>{pct}</td>
           </tr>
         </tbody>
-        <tbody className="bids">{bidRows.map((row) => levelRow(row, "bid", "b" + row.price))}</tbody>
+        <tbody className="bids">
+          {bidRows.map((row) => levelRow(row, "bid", "b" + row.price))}
+        </tbody>
       </table>
     </section>
   );

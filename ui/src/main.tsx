@@ -18,7 +18,9 @@ createRoot(root).render(
   <StrictMode>
     <WagmiProvider config={wagmiConfig}>
       <QueryClientProvider client={queries}>
-        <RainbowKitProvider theme={lightTheme({ accentColor: "#000", borderRadius: "none" })}>
+        <RainbowKitProvider
+          theme={lightTheme({ accentColor: "#000", borderRadius: "none" })}
+        >
           <App />
         </RainbowKitProvider>
       </QueryClientProvider>

@@ -9,15 +9,23 @@ function parseWs(data: string): WsMessage | null {
   } catch {
     return null;
   }
-  if (typeof value !== "object" || value === null || !("type" in value)) return null;
+  if (typeof value !== "object" || value === null || !("type" in value))
+    return null;
   // The type tag is checked. The fields are the frames core/api.py sends.
-  if (value.type === "block" || value.type === "book" || value.type === "trade") {
+  if (
+    value.type === "block" ||
+    value.type === "book" ||
+    value.type === "trade"
+  ) {
     return value as WsMessage;
   }
   return null;
 }
 
-export function useWebSocket(path: string, onMessage: (msg: WsMessage) => void): string {
+export function useWebSocket(
+  path: string,
+  onMessage: (msg: WsMessage) => void,
+): string {
   const [status, setStatus] = useState("connecting");
   const handler = useRef(onMessage);
   handler.current = onMessage;

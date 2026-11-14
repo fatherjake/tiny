@@ -3,14 +3,32 @@ import { useEffect, useRef, useState } from "react";
 import { useWebSocket } from "./useWebSocket";
 import { readJson } from "../lib/api";
 import { applyCandles, rememberPrint, seed } from "../lib/series";
-import type { BlockMsg, Depth, FundingRow, MarketInfo, Series, Status, StoredCandle, StoredTrade, Trade } from "../types";
+import type {
+  BlockMsg,
+  Depth,
+  FundingRow,
+  MarketInfo,
+  Series,
+  Status,
+  StoredCandle,
+  StoredTrade,
+  Trade,
+} from "../types";
 
 const REFRESH_MS = 250;
 const FEED_LIMIT = 50;
 const TICK_TRADES = 2_000;
 
 function asPrint(row: StoredTrade): Trade {
-  return { seq: row.id, height: row.height, timestamp_ms: row.ts, market: row.market, side: row.side, price: row.price, size: row.size };
+  return {
+    seq: row.id,
+    height: row.height,
+    timestamp_ms: row.ts,
+    market: row.market,
+    side: row.side,
+    price: row.price,
+    size: row.size,
+  };
 }
 
 async function recentTrades(market: string): Promise<StoredTrade[] | null> {
@@ -51,24 +69,48 @@ export function useMarketData() {
         setLanded((value) => value + 1);
       }
       setFeed((rows) => [msg, ...rows].slice(0, FEED_LIMIT));
-      setStatus((prev) => ({ ...(prev ?? {}), height: msg.height, view: msg.view, tip: msg.hash }));
-      fetch("/markets").then(async (res) => res.ok && setMarkets(await readJson<MarketInfo[]>(res))).catch(() => {});
-    } else if (msg.type === "book") setBooks((prev) => ({ ...prev, [msg.market]: msg }));
+      setStatus((prev) => ({
+        ...(prev ?? {}),
+        height: msg.height,
+        view: msg.view,
+        tip: msg.hash,
+      }));
+      fetch("/markets")
+        .then(
+          async (res) =>
+            res.ok && setMarkets(await readJson<MarketInfo[]>(res)),
+        )
+        .catch(() => {});
+    } else if (msg.type === "book")
+      setBooks((prev) => ({ ...prev, [msg.market]: msg }));
     else {
-      setPrints((rows) => (rows.some((row) => row.seq === msg.seq) ? rows : [msg, ...rows].slice(0, 40)));
+      setPrints((rows) =>
+        rows.some((row) => row.seq === msg.seq)
+          ? rows
+          : [msg, ...rows].slice(0, 40),
+      );
       setSeries((prev) => rememberPrint(prev, msg.market, msg));
     }
   });
   useEffect(() => {
-    const tick = () => fetch("/status").then(async (res) => res.ok && setStatus(await readJson<Status>(res))).catch(() => {});
+    const tick = () =>
+      fetch("/status")
+        .then(async (res) => res.ok && setStatus(await readJson<Status>(res)))
+        .catch(() => {});
     tick();
     const id = window.setInterval(tick, 1000);
     return () => clearInterval(id);
   }, []);
   useEffect(() => {
-    fetch("/markets").then(async (res) => res.ok && setMarkets(await readJson<MarketInfo[]>(res))).catch(() => {});
+    fetch("/markets")
+      .then(
+        async (res) => res.ok && setMarkets(await readJson<MarketInfo[]>(res)),
+      )
+      .catch(() => {});
   }, []);
-  useEffect(() => { if (!selected && markets.length) setSelected(markets[0].name); }, [markets, selected]);
+  useEffect(() => {
+    if (!selected && markets.length) setSelected(markets[0].name);
+  }, [markets, selected]);
   useEffect(() => {
     if (!selected) return;
     let stop = false;
@@ -76,31 +118,66 @@ export function useMarketData() {
     const load = async (first: boolean) => {
       const market = encodeURIComponent(selected);
       const [candles, trades, fund] = await Promise.all([
-        fetch("/candles/" + market + "?interval=1m" + (since == null ? "" : "&start=" + since)),
-        first ? recentTrades(market) : fetch("/trades/" + market + "?limit=200").then((res) => res.ok ? readJson<StoredTrade[]>(res) : null),
+        fetch(
+          "/candles/" +
+            market +
+            "?interval=1m" +
+            (since == null ? "" : "&start=" + since),
+        ),
+        first
+          ? recentTrades(market)
+          : fetch("/trades/" + market + "?limit=200").then((res) =>
+              res.ok ? readJson<StoredTrade[]>(res) : null,
+            ),
         fetch("/funding/" + market + "?limit=50"),
       ]);
       if (stop) return;
       if (candles.ok) {
         const rows = await readJson<StoredCandle[]>(candles);
         if (rows.length) since = Number(rows[rows.length - 1].ts) - 60_000;
-        setSeries((prev) => ({ ...prev, [selected]: applyCandles(prev[selected] || {}, rows) }));
+        setSeries((prev) => ({
+          ...prev,
+          [selected]: applyCandles(prev[selected] || {}, rows),
+        }));
       }
       if (trades) {
         setPrints(trades.slice(0, 40).map(asPrint));
-        setSeries((prev) => ({ ...prev, [selected]: seed(prev[selected] || {}, trades.map((row) => ({ height: row.height, price: row.price }))) }));
+        setSeries((prev) => ({
+          ...prev,
+          [selected]: seed(
+            prev[selected] || {},
+            trades.map((row) => ({ height: row.height, price: row.price })),
+          ),
+        }));
       }
       if (fund.ok) setFunding(await readJson<FundingRow[]>(fund));
     };
     void load(true).then(async () => {
-      const res = await fetch("/book/" + encodeURIComponent(selected) + "?levels=20");
+      const res = await fetch(
+        "/book/" + encodeURIComponent(selected) + "?levels=20",
+      );
       if (!stop && res.ok) {
         const next = await readJson<Depth>(res);
         setBooks((prev) => ({ ...prev, [selected]: next }));
       }
     });
     const id = window.setInterval(() => void load(false), 1000);
-    return () => { stop = true; clearInterval(id); };
+    return () => {
+      stop = true;
+      clearInterval(id);
+    };
   }, [selected]);
-  return { status, markets, books, series, selected, setSelected, feed, prints, funding, landed, ws };
+  return {
+    status,
+    markets,
+    books,
+    series,
+    selected,
+    setSelected,
+    feed,
+    prints,
+    funding,
+    landed,
+    ws,
+  };
 }

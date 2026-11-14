@@ -50,5 +50,12 @@ export function useTraderSession() {
     }
   }
 
-  return { wallet, key, error, signing, canSign: status === "connected" && !signing, enable };
+  return {
+    wallet,
+    key,
+    error,
+    signing,
+    canSign: status === "connected" && !signing,
+    enable,
+  };
 }

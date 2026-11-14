@@ -1,11 +1,22 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { readJson } from "../lib/api";
-import type { AccountView, OpenOrder, StoredOrder, StoredTrade } from "../types";
+import type {
+  AccountView,
+  OpenOrder,
+  StoredOrder,
+  StoredTrade,
+} from "../types";
 import type { TraderKey } from "./useTraderSession";
 
 function asOpen(row: StoredOrder): OpenOrder {
-  return { id: row.order_id, market: row.market, side: row.side, price: row.price, size: row.remaining };
+  return {
+    id: row.order_id,
+    market: row.market,
+    side: row.side,
+    price: row.price,
+    size: row.remaining,
+  };
 }
 
 export function useTradingAccount(key: TraderKey | null, landed: number) {
@@ -39,12 +50,23 @@ export function useTradingAccount(key: TraderKey | null, landed: number) {
       try {
         const [next, open, past, trades] = await Promise.all([
           refreshAccount(),
-          fetch("/accounts/" + encodeURIComponent(key.trader) + "/orders?status=open"),
-          fetch("/accounts/" + encodeURIComponent(key.trader) + "/orders?status=history&limit=50"),
-          fetch("/accounts/" + encodeURIComponent(key.trader) + "/fills?limit=50"),
+          fetch(
+            "/accounts/" +
+              encodeURIComponent(key.trader) +
+              "/orders?status=open",
+          ),
+          fetch(
+            "/accounts/" +
+              encodeURIComponent(key.trader) +
+              "/orders?status=history&limit=50",
+          ),
+          fetch(
+            "/accounts/" + encodeURIComponent(key.trader) + "/fills?limit=50",
+          ),
         ]);
         if (stop || next === undefined) return;
-        if (open.ok) setOrders((await readJson<StoredOrder[]>(open)).map(asOpen));
+        if (open.ok)
+          setOrders((await readJson<StoredOrder[]>(open)).map(asOpen));
         if (past.ok) setHistory(await readJson<StoredOrder[]>(past));
         if (trades.ok) setFills(await readJson<StoredTrade[]>(trades));
       } catch {

@@ -97,7 +97,13 @@ export type OrderDraft = {
 };
 
 export type LinePoint = { time: number; value: number };
-export type Candle = { time: number; open: number; high: number; low: number; close: number };
+export type Candle = {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+};
 
 export type StoredTrade = {
   id: number;

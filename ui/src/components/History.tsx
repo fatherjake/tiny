@@ -1,5 +1,10 @@
 import { fmt, pct, usd } from "../lib/scale";
-import type { FundingRow, MarketInfo, StoredOrder, StoredTrade } from "../types";
+import type {
+  FundingRow,
+  MarketInfo,
+  StoredOrder,
+  StoredTrade,
+} from "../types";
 
 export function OrderHistory({ orders }: { orders: StoredOrder[] }) {
   return (
@@ -61,7 +66,9 @@ export function Fills({ rows }: { rows: StoredTrade[] }) {
             rows.map((row) => (
               <tr key={row.id}>
                 <td>{row.height}</td>
-                <td className={row.side === "buy" ? "bid" : "ask"}>{row.side}</td>
+                <td className={row.side === "buy" ? "bid" : "ask"}>
+                  {row.side}
+                </td>
                 <td>{usd(row.price)}</td>
                 <td>{fmt(row.size)}</td>
                 <td>{row.liquidation ? "yes" : ""}</td>
@@ -80,7 +87,13 @@ export function Fills({ rows }: { rows: StoredTrade[] }) {
   );
 }
 
-export function Funding({ rows, markets }: { rows: FundingRow[]; markets: MarketInfo[] }) {
+export function Funding({
+  rows,
+  markets,
+}: {
+  rows: FundingRow[];
+  markets: MarketInfo[];
+}) {
   return (
     <section className="pad grow">
       <table>
@@ -97,7 +110,12 @@ export function Funding({ rows, markets }: { rows: FundingRow[]; markets: Market
               <tr key={row.market + ":" + row.height}>
                 <td>{row.height}</td>
                 <td>{usd(row.index)}</td>
-                <td>{pct(row.rate, markets.find((m) => m.name === row.market)?.oracle_price)}</td>
+                <td>
+                  {pct(
+                    row.rate,
+                    markets.find((m) => m.name === row.market)?.oracle_price,
+                  )}
+                </td>
               </tr>
             ))
           ) : (

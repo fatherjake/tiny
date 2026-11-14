@@ -51,19 +51,23 @@ describe("currentPrice", () => {
 
   it("returns null without a market or a price", () => {
     expect(currentPrice(null)).toBe(null);
-    expect(currentPrice({ ...market, mark_price: null, oracle_price: null })).toBe(null);
+    expect(
+      currentPrice({ ...market, mark_price: null, oracle_price: null }),
+    ).toBe(null);
   });
 });
 
 describe("outcome", () => {
   it("names the status and explains a rejection", () => {
-    expect(outcome({ order_id: 7, status: "placed", reason: "" })).toBe("order 7 placed");
+    expect(outcome({ order_id: 7, status: "placed", reason: "" })).toBe(
+      "order 7 placed",
+    );
     expect(outcome({ order_id: 7, status: "rejected", reason: "margin" })).toBe(
       "order 7 rejected: not enough margin",
     );
-    expect(outcome({ order_id: 7, status: "partial", reason: "unfilled" })).toBe(
-      "order 7 partial: unfilled",
-    );
+    expect(
+      outcome({ order_id: 7, status: "partial", reason: "unfilled" }),
+    ).toBe("order 7 partial: unfilled");
   });
 });
 
@@ -71,12 +75,22 @@ describe("closeOrder", () => {
   const book = { best_bid: 10_000_000_000n, best_ask: 10_100_000_000n };
 
   it("sells a long and buys back a short, for the whole size", () => {
-    expect(closeOrder({ market: "BTC-PERP", size: 2_000_000n, entry_notional: 0n }, book)).toEqual({
+    expect(
+      closeOrder(
+        { market: "BTC-PERP", size: 2_000_000n, entry_notional: 0n },
+        book,
+      ),
+    ).toEqual({
       side: "sell",
       size: 2_000_000n,
       price: 9_900_000_000n,
     });
-    expect(closeOrder({ market: "BTC-PERP", size: -500_000n, entry_notional: 0n }, book)).toEqual({
+    expect(
+      closeOrder(
+        { market: "BTC-PERP", size: -500_000n, entry_notional: 0n },
+        book,
+      ),
+    ).toEqual({
       side: "buy",
       size: 500_000n,
       price: 10_201_000_000n,
@@ -84,8 +98,12 @@ describe("closeOrder", () => {
   });
 
   it("returns null for a flat position or no quote", () => {
-    expect(closeOrder({ market: "BTC-PERP", size: 0n, entry_notional: 0n }, book)).toBe(null);
-    expect(closeOrder({ market: "BTC-PERP", size: 1n, entry_notional: 0n }, null)).toBe(null);
+    expect(
+      closeOrder({ market: "BTC-PERP", size: 0n, entry_notional: 0n }, book),
+    ).toBe(null);
+    expect(
+      closeOrder({ market: "BTC-PERP", size: 1n, entry_notional: 0n }, null),
+    ).toBe(null);
   });
 });
 
@@ -93,7 +111,9 @@ describe("midPrice", () => {
   const market = { tick_size: 500_000n } as Parameters<typeof midPrice>[0];
 
   it("snaps the mid down to the tick", () => {
-    expect(midPrice(market, { best_bid: 100_000_000n, best_ask: 101_400_000n })).toBe(100_500_000n);
+    expect(
+      midPrice(market, { best_bid: 100_000_000n, best_ask: 101_400_000n }),
+    ).toBe(100_500_000n);
   });
 
   it("needs both sides", () => {
@@ -122,8 +142,8 @@ describe("availableMargin", () => {
       funding_index: null,
       funding_ts: null,
       funding_base: null,
-    maker_fee_bps: 2,
-    taker_fee_bps: 5,
+      maker_fee_bps: 2,
+      taker_fee_bps: 5,
     },
   ];
   const account = {
@@ -131,11 +151,19 @@ describe("availableMargin", () => {
     collateral: 1_000_000_000n,
     nonce: 0,
     account_value: 1_000_000_000n,
-    positions: { "BTC-PERP": { market: "BTC-PERP", size: -2_000_000n, entry_notional: 0n } },
+    positions: {
+      "BTC-PERP": { market: "BTC-PERP", size: -2_000_000n, entry_notional: 0n },
+    },
   };
 
   it("takes position and resting-order initial margin off the account value", () => {
-    const order = { id: 1, market: "BTC-PERP", side: "buy" as const, price: 50_000_000n, size: 4_000_000n };
+    const order = {
+      id: 1,
+      market: "BTC-PERP",
+      side: "buy" as const,
+      price: 50_000_000n,
+      size: 4_000_000n,
+    };
     // $1,000 less $20 for the $200 short and $20 for the $200 bid, both at 10x.
     expect(availableMargin(account, markets, [order])).toBe(960_000_000n);
   });
@@ -195,7 +223,11 @@ describe("afterFill", () => {
   });
 
   it("realises pnl on a partial close and keeps the rest of the entry", () => {
-    const long = { collateral: 1_000_000_000n, size: 200_000n, entry: 10_000_000_000n };
+    const long = {
+      collateral: 1_000_000_000n,
+      size: 200_000n,
+      entry: 10_000_000_000n,
+    };
     // Sell half at $51,000, no fee: $100 profit, half the entry left.
     expect(afterFill(long, -100_000n, 51_000_000_000n, 0n)).toEqual({
       collateral: 1_100_000_000n,
@@ -205,7 +237,11 @@ describe("afterFill", () => {
   });
 
   it("flips through flat and enters the new side at the fill", () => {
-    const long = { collateral: 1_000_000_000n, size: 100_000n, entry: 5_000_000_000n };
+    const long = {
+      collateral: 1_000_000_000n,
+      size: 100_000n,
+      entry: 5_000_000_000n,
+    };
     expect(afterFill(long, -300_000n, 50_000_000_000n, 0n)).toEqual({
       collateral: 1_000_000_000n,
       size: -200_000n,
@@ -218,7 +254,11 @@ describe("liquidationPrice", () => {
   it("solves value = maintenance for a long and a short", () => {
     // 0.2 BTC long, $10,000 entry, $1,000 collateral, 3% maintenance:
     // p = (10,000 - 1,000) / (0.2 * 0.97) = $46,391.75...
-    const long = { collateral: 1_000_000_000n, size: 200_000n, entry: 10_000_000_000n };
+    const long = {
+      collateral: 1_000_000_000n,
+      size: 200_000n,
+      entry: 10_000_000_000n,
+    };
     expect(liquidationPrice(long, 300n)).toBe(46_391_752_577n);
     // Short: p = (1,000 + 10,000) / (0.2 * 1.03) = $53,398.05...
     const short = { ...long, size: -200_000n };
@@ -226,8 +266,14 @@ describe("liquidationPrice", () => {
   });
 
   it("is null when flat or when the long can never fall far enough", () => {
-    expect(liquidationPrice({ collateral: 1n, size: 0n, entry: 0n }, 300n)).toBe(null);
-    const covered = { collateral: 20_000_000_000n, size: 200_000n, entry: 10_000_000_000n };
+    expect(
+      liquidationPrice({ collateral: 1n, size: 0n, entry: 0n }, 300n),
+    ).toBe(null);
+    const covered = {
+      collateral: 20_000_000_000n,
+      size: 200_000n,
+      entry: 10_000_000_000n,
+    };
     expect(liquidationPrice(covered, 300n)).toBe(null);
   });
 });

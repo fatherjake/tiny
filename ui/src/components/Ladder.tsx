@@ -1,6 +1,13 @@
 import { useState } from "react";
 
-import type { BlockMsg, Depth, FundingRow, MarketInfo, Scaled, Trade } from "../types";
+import type {
+  BlockMsg,
+  Depth,
+  FundingRow,
+  MarketInfo,
+  Scaled,
+  Trade,
+} from "../types";
 import { Book } from "./Book";
 import { Feed } from "./Feed";
 import { Funding } from "./History";
@@ -23,7 +30,15 @@ const TABS = [
   ["blocks", "Blocks"],
 ] as const;
 
-export function Ladder({ market, book, prints, funding, markets, blocks, onPrice }: Props) {
+export function Ladder({
+  market,
+  book,
+  prints,
+  funding,
+  markets,
+  blocks,
+  onPrice,
+}: Props) {
   const [tab, setTab] = useState<(typeof TABS)[number][0]>("book");
   const mine = prints.filter((print) => print.market === market);
   return (

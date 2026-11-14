@@ -5,8 +5,20 @@ import { applyCandles, rememberPrint, seed } from "./series";
 describe("applyCandles", () => {
   it("builds open high low close in time order, at the block time", () => {
     const next = applyCandles({}, [
-      { ts: 1_700_000_060_000, open: 2_000_000, high: 4_000_000, low: 1_000_000, close: 3_000_000 },
-      { ts: 1_700_000_000_000, open: 1_000_000, high: 1_000_000, low: 1_000_000, close: 1_000_000 },
+      {
+        ts: 1_700_000_060_000,
+        open: 2_000_000,
+        high: 4_000_000,
+        low: 1_000_000,
+        close: 3_000_000,
+      },
+      {
+        ts: 1_700_000_000_000,
+        open: 1_000_000,
+        high: 1_000_000,
+        low: 1_000_000,
+        close: 1_000_000,
+      },
     ]);
     expect(next.bars).toEqual([
       { time: 1_700_000_000, open: 1, high: 1, low: 1, close: 1 },
@@ -22,8 +34,14 @@ describe("applyCandles", () => {
       low: 1_000_000,
       close,
     });
-    const first = applyCandles({}, [row(1_700_000_000_000, 1_000_000), row(1_700_000_060_000, 2_000_000)]);
-    const next = applyCandles(first, [row(1_700_000_060_000, 3_000_000), row(1_700_000_120_000, 4_000_000)]);
+    const first = applyCandles({}, [
+      row(1_700_000_000_000, 1_000_000),
+      row(1_700_000_060_000, 2_000_000),
+    ]);
+    const next = applyCandles(first, [
+      row(1_700_000_060_000, 3_000_000),
+      row(1_700_000_120_000, 4_000_000),
+    ]);
     expect(next.bars?.map((bar) => [bar.time, bar.close])).toEqual([
       [1_700_000_000, 1],
       [1_700_000_060, 3],
@@ -35,10 +53,24 @@ describe("applyCandles", () => {
 
   it("keeps each second as its own candle", () => {
     const next = applyCandles({}, [
-      { ts: 1_700_000_000_000, open: 1_000_000, high: 1_000_000, low: 1_000_000, close: 1_000_000 },
-      { ts: 1_700_000_001_000, open: 2_000_000, high: 3_000_000, low: 2_000_000, close: 3_000_000 },
+      {
+        ts: 1_700_000_000_000,
+        open: 1_000_000,
+        high: 1_000_000,
+        low: 1_000_000,
+        close: 1_000_000,
+      },
+      {
+        ts: 1_700_000_001_000,
+        open: 2_000_000,
+        high: 3_000_000,
+        low: 2_000_000,
+        close: 3_000_000,
+      },
     ]);
-    expect(next.bars?.map((bar) => bar.time)).toEqual([1_700_000_000, 1_700_000_001]);
+    expect(next.bars?.map((bar) => bar.time)).toEqual([
+      1_700_000_000, 1_700_000_001,
+    ]);
   });
 });
 
@@ -55,7 +87,10 @@ describe("tick series", () => {
       { time: 3, value: 3 },
       { time: 4, value: 4 },
     ]);
-    const live = rememberPrint({ BTC: seeded }, "BTC", { height: 4, price: 5_000_000 });
+    const live = rememberPrint({ BTC: seeded }, "BTC", {
+      height: 4,
+      price: 5_000_000,
+    });
     expect(live.BTC.ticks).toEqual([
       { time: 2, value: 2.5 },
       { time: 3, value: 3 },

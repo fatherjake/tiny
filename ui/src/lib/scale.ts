@@ -60,17 +60,28 @@ export function short(value: unknown): string {
 
 // "0x123...abc" for a wallet, "1234...abcd" for a trader key.
 export function shorten(value: string, head: number, tail: number): string {
-  return value.length <= head + tail + 3 ? value : value.slice(0, head) + "..." + value.slice(-tail);
+  return value.length <= head + tail + 3
+    ? value
+    : value.slice(0, head) + "..." + value.slice(-tail);
 }
 
-export function pct(part: Scaled | null | undefined, whole: Scaled | null | undefined): string {
+export function pct(
+  part: Scaled | null | undefined,
+  whole: Scaled | null | undefined,
+): string {
   if (part == null || whole == null) return "-";
   const den = bi(whole);
   if (den === 0n) return "-";
   const v = (bi(part) * 1_000_000n) / den;
   const neg = v < 0n;
   const a = neg ? -v : v;
-  return (neg ? "-" : "") + (a / 10_000n).toString() + "." + (a % 10_000n).toString().padStart(4, "0") + "%";
+  return (
+    (neg ? "-" : "") +
+    (a / 10_000n).toString() +
+    "." +
+    (a % 10_000n).toString().padStart(4, "0") +
+    "%"
+  );
 }
 
 // Dollars: "$1,234.57", rounded half up to the cent.

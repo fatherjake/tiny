@@ -16,7 +16,13 @@ const YEAR_MS = 365n * 24n * 3_600_000n;
 // Funding paid over the last hour (or since genesis), as a yearly rate of the oracle price.
 function annual(market: MarketInfo | null): string {
   const base = market?.funding_base;
-  if (!market || !base || market.funding_ts == null || market.funding_index == null) return "-";
+  if (
+    !market ||
+    !base ||
+    market.funding_ts == null ||
+    market.funding_index == null
+  )
+    return "-";
   if (market.oracle_price == null) return "-";
   const elapsed = BigInt(market.funding_ts - base.ts);
   if (elapsed <= 0n) return "-";
@@ -24,11 +30,22 @@ function annual(market: MarketInfo | null): string {
   return pct(paid * YEAR_MS, bi(market.oracle_price) * elapsed);
 }
 
-export function Header({ status, ws, market, markets, selected, onSelect, last }: Props) {
+export function Header({
+  status,
+  ws,
+  market,
+  markets,
+  selected,
+  onSelect,
+  last,
+}: Props) {
   return (
     <header>
       <div className="quote">
-        <select value={selected} onChange={(event) => onSelect(event.target.value)}>
+        <select
+          value={selected}
+          onChange={(event) => onSelect(event.target.value)}
+        >
           {markets.length ? (
             markets.map((item) => (
               <option key={item.name} value={item.name}>

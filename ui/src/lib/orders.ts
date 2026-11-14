@@ -12,13 +12,19 @@ import { SCALE, bi, tryScaled } from "./scale";
 
 const MARKET_SLIPPAGE_BPS = 100n;
 
-export function marketPrice(side: "buy" | "sell", book: Depth | null): bigint | null {
+export function marketPrice(
+  side: "buy" | "sell",
+  book: Depth | null,
+): bigint | null {
   if (book == null) return null;
   const raw = side === "buy" ? book.best_ask : book.best_bid;
   if (raw == null) return null;
   const touch = bi(raw);
   if (touch <= 0n) return null;
-  const band = side === "buy" ? 10_000n + MARKET_SLIPPAGE_BPS : 10_000n - MARKET_SLIPPAGE_BPS;
+  const band =
+    side === "buy"
+      ? 10_000n + MARKET_SLIPPAGE_BPS
+      : 10_000n - MARKET_SLIPPAGE_BPS;
   const price = (touch * band) / 10_000n;
   return price > 0n ? price : null;
 }
@@ -29,10 +35,20 @@ export function gridNote(
   price: bigint | null,
   orderType: "limit" | "market",
 ): string {
-  if (size != null && market && bi(market.lot_size) > 0n && size % bi(market.lot_size) !== 0n) {
+  if (
+    size != null &&
+    market &&
+    bi(market.lot_size) > 0n &&
+    size % bi(market.lot_size) !== 0n
+  ) {
     return "off lot";
   }
-  if (orderType === "limit" && price != null && market && bi(market.tick_size) > 0n) {
+  if (
+    orderType === "limit" &&
+    price != null &&
+    market &&
+    bi(market.tick_size) > 0n
+  ) {
     if (price % bi(market.tick_size) !== 0n) return "off tick";
   }
   return "";
@@ -47,8 +63,12 @@ export function currentPrice(market: MarketInfo | null): bigint | null {
   return snapped > 0n ? snapped : null;
 }
 
-export function midPrice(market: MarketInfo | null, book: Depth | null): bigint | null {
-  if (market == null || book?.best_bid == null || book.best_ask == null) return null;
+export function midPrice(
+  market: MarketInfo | null,
+  book: Depth | null,
+): bigint | null {
+  if (market == null || book?.best_bid == null || book.best_ask == null)
+    return null;
   const mid = (bi(book.best_bid) + bi(book.best_ask)) / 2n;
   const tick = bi(market.tick_size);
   const snapped = tick > 0n ? mid - (mid % tick) : mid;
@@ -70,7 +90,8 @@ export function availableMargin(
   orders: OpenOrder[],
 ): bigint {
   if (account == null) return 0n;
-  const lev = (name: string) => BigInt(markets.find((m) => m.name === name)?.max_leverage || 1);
+  const lev = (name: string) =>
+    BigInt(markets.find((m) => m.name === name)?.max_leverage || 1);
   let used = 0n;
   for (const pos of Object.values(account.positions ?? {})) {
     const market = markets.find((m) => m.name === pos.market);
@@ -110,19 +131,25 @@ export function previewOrder(
 ): OrderPreview {
   const lev = Math.max(1, market?.max_leverage ?? 1);
   const available = availableMargin(account, markets, orders);
-  const held = market ? account?.positions?.[market.name]?.size ?? 0 : 0;
+  const held = market ? (account?.positions?.[market.name]?.size ?? 0) : 0;
   const cap = form.type === "market" ? marketPrice(form.side, book) : null;
   const touch = form.side === "buy" ? book?.best_ask : book?.best_bid;
   const sendPrice = form.type === "limit" ? tryScaled(form.price) : cap;
-  const sizePrice = form.type === "limit" ? sendPrice : touch == null ? null : bi(touch);
+  const sizePrice =
+    form.type === "limit" ? sendPrice : touch == null ? null : bi(touch);
   const dollars = tryScaled(form.usd);
   const size =
-    dollars != null && sizePrice != null && market ? sizeFromUsd(dollars, sizePrice, bi(market.lot_size)) : null;
-  const notional = size != null && sizePrice != null ? (size * sizePrice) / SCALE : null;
+    dollars != null && sizePrice != null && market
+      ? sizeFromUsd(dollars, sizePrice, bi(market.lot_size))
+      : null;
+  const notional =
+    size != null && sizePrice != null ? (size * sizePrice) / SCALE : null;
   // The chain reserves initial margin at the submitted price. For a market order that is the
   // slippage cap, even though sizing and the expected fill use the touch.
   const requiredMargin =
-    size != null && sendPrice != null ? (size * sendPrice) / SCALE / BigInt(lev) : null;
+    size != null && sendPrice != null
+      ? (size * sendPrice) / SCALE / BigInt(lev)
+      : null;
   const maxUsd =
     sizePrice != null && sendPrice != null
       ? (available * BigInt(lev) * sizePrice) / sendPrice
@@ -130,7 +157,10 @@ export function previewOrder(
   const pos = market ? account?.positions?.[market.name] : undefined;
   let liquidation: bigint | null = null;
   if (market && size != null && size > 0n && sizePrice != null) {
-    const fee = BigInt((form.type === "market" ? market.taker_fee_bps : market.maker_fee_bps) ?? 0);
+    const fee = BigInt(
+      (form.type === "market" ? market.taker_fee_bps : market.maker_fee_bps) ??
+        0,
+    );
     liquidation = liquidationPrice(
       afterFill(
         {
@@ -149,7 +179,11 @@ export function previewOrder(
   if (!problem && form.type === "market" && cap == null) problem = "no quote";
   if (!problem && dollars == null) problem = "enter a size in USD";
   if (!problem && size === 0n) problem = "size is below one lot";
-  const short = !problem && !form.reduceOnly && requiredMargin != null && requiredMargin > available;
+  const short =
+    !problem &&
+    !form.reduceOnly &&
+    requiredMargin != null &&
+    requiredMargin > available;
   if (short) problem = "margin";
   return {
     available,
@@ -169,7 +203,12 @@ export function previewOrder(
 export type Holding = { collateral: bigint; size: bigint; entry: bigint };
 
 // The account after filling `size` (signed: >0 buys) at `price`, as core/state.py _apply_fill.
-export function afterFill(held: Holding, size: bigint, price: bigint, feeBps: bigint): Holding {
+export function afterFill(
+  held: Holding,
+  size: bigint,
+  price: bigint,
+  feeBps: bigint,
+): Holding {
   const abs = (n: bigint) => (n < 0n ? -n : n);
   const notional = (price * abs(size)) / SCALE;
   let collateral = held.collateral - (notional * feeBps) / 10_000n;
@@ -180,23 +219,32 @@ export function afterFill(held: Holding, size: bigint, price: bigint, feeBps: bi
   }
   const closing = next === 0n || next > 0n === old > 0n;
   const closed = closing ? abs(size) : abs(old);
-  const closedEntry = closed === abs(old) ? held.entry : (held.entry * closed) / abs(old);
+  const closedEntry =
+    closed === abs(old) ? held.entry : (held.entry * closed) / abs(old);
   const closedNotional = (price * closed) / SCALE;
-  collateral += old > 0n ? closedNotional - closedEntry : closedEntry - closedNotional;
+  collateral +=
+    old > 0n ? closedNotional - closedEntry : closedEntry - closedNotional;
   if (next === 0n) return { collateral, size: 0n, entry: 0n };
-  const entry = closing ? held.entry - closedEntry : (price * abs(next)) / SCALE;
+  const entry = closing
+    ? held.entry - closedEntry
+    : (price * abs(next)) / SCALE;
   return { collateral, size: next, entry };
 }
 
 // The mark at which account value falls to maintenance margin, for one market held in cross.
 // Long: C + s*p - E = s*p*mm. Short: C + E - s*p = s*p*mm. Null when flat or never liquidated.
-export function liquidationPrice(held: Holding, maintenanceBps: bigint): bigint | null {
+export function liquidationPrice(
+  held: Holding,
+  maintenanceBps: bigint,
+): bigint | null {
   const { collateral, size, entry } = held;
   if (size === 0n) return null;
   const price =
     size > 0n
-      ? ((entry - collateral) * SCALE * 10_000n) / (size * (10_000n - maintenanceBps))
-      : ((collateral + entry) * SCALE * 10_000n) / (-size * (10_000n + maintenanceBps));
+      ? ((entry - collateral) * SCALE * 10_000n) /
+        (size * (10_000n - maintenanceBps))
+      : ((collateral + entry) * SCALE * 10_000n) /
+        (-size * (10_000n + maintenanceBps));
   return price > 0n ? price : null;
 }
 
@@ -217,7 +265,9 @@ const REASONS: Record<string, string> = {
   signer: "signed by a different key",
 };
 
-export function outcome(row: Pick<StoredOrder, "order_id" | "status" | "reason">): string {
+export function outcome(
+  row: Pick<StoredOrder, "order_id" | "status" | "reason">,
+): string {
   const head = "order " + row.order_id + " " + row.status;
   if (!row.reason) return head;
   return head + ": " + (REASONS[row.reason] ?? row.reason);
@@ -226,7 +276,10 @@ export function outcome(row: Pick<StoredOrder, "order_id" | "status" | "reason">
 export type CloseOrder = { side: "buy" | "sell"; size: bigint; price: bigint };
 
 // Closing is a reduce-only market order for the whole position on the other side.
-export function closeOrder(pos: Position, book: Depth | null): CloseOrder | null {
+export function closeOrder(
+  pos: Position,
+  book: Depth | null,
+): CloseOrder | null {
   const size = bi(pos.size);
   if (size === 0n) return null;
   const side = size > 0n ? "sell" : "buy";

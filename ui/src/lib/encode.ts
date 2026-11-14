@@ -58,10 +58,13 @@ export function canonicalize(value: Canon): string {
   }
   if (typeof value === "string") return quote(value);
   if (value instanceof Uint8Array) return quote(bytesToHex(value));
-  if (Array.isArray(value)) return "[" + value.map(canonicalize).join(",") + "]";
+  if (Array.isArray(value))
+    return "[" + value.map(canonicalize).join(",") + "]";
   if (typeof value === "object") {
     const keys = Object.keys(value).sort();
-    const parts = keys.map((key) => quote(key) + ":" + canonicalize(value[key]));
+    const parts = keys.map(
+      (key) => quote(key) + ":" + canonicalize(value[key]),
+    );
     return "{" + parts.join(",") + "}";
   }
   throw new Error("cannot encode " + typeof value);

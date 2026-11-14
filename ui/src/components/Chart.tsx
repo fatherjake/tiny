@@ -66,7 +66,10 @@ export function Chart({ market, points }: Props) {
         horzLines: { color: "rgba(0, 0, 0, 0.12)" },
       },
       // Equal margins, so the centred price sits in the middle of the plot.
-      rightPriceScale: { borderColor: edge, scaleMargins: { top: 0.05, bottom: 0.05 } },
+      rightPriceScale: {
+        borderColor: edge,
+        scaleMargins: { top: 0.05, bottom: 0.05 },
+      },
       timeScale: {
         borderColor: edge,
         timeVisible: true,
@@ -95,7 +98,11 @@ export function Chart({ market, points }: Props) {
           const seen = base();
           if (px == null || seen?.priceRange == null) return seen;
           const { minValue, maxValue } = seen.priceRange;
-          const half = Math.max((maxValue - px) * PAD, (px - minValue) * PAD, px * MIN_HALF);
+          const half = Math.max(
+            (maxValue - px) * PAD,
+            (px - minValue) * PAD,
+            px * MIN_HALF,
+          );
           return { priceRange: { minValue: px - half, maxValue: px + half } };
         },
       }),
@@ -120,13 +127,17 @@ export function Chart({ market, points }: Props) {
     );
     plot.line.setData(
       ticks
-        ? (points.ticks ?? []).map((point) => ({ ...point, time: point.time as UTCTimestamp }))
+        ? (points.ticks ?? []).map((point) => ({
+            ...point,
+            time: point.time as UTCTimestamp,
+          }))
         : [],
     );
     const key = market + ":" + span + ":" + (count > 0);
     if (fitted.current !== key) {
       fitted.current = key;
-      const last = candles && candles.length > 0 ? candles[candles.length - 1].time : null;
+      const last =
+        candles && candles.length > 0 ? candles[candles.length - 1].time : null;
       if (!ticks && last != null) {
         plot.chart.priceScale("right").applyOptions({ autoScale: true });
         plot.chart.timeScale().setVisibleRange({
@@ -143,7 +154,11 @@ export function Chart({ market, points }: Props) {
     <section className="chart">
       <div className="row">
         <b>{market || "chart"}</b>
-        <button type="button" className={span === "1m" ? "on" : ""} onClick={() => setSpan("1m")}>
+        <button
+          type="button"
+          className={span === "1m" ? "on" : ""}
+          onClick={() => setSpan("1m")}
+        >
           1m
         </button>
         <button

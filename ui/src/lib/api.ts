@@ -28,8 +28,10 @@ async function errorText(res: Response): Promise<string> {
     return detail
       .map((item) => {
         if (typeof item !== "object" || item === null) return "";
-        const loc = "loc" in item && Array.isArray(item.loc) ? item.loc.join(".") : "";
-        const msg = "msg" in item && typeof item.msg === "string" ? item.msg : undefined;
+        const loc =
+          "loc" in item && Array.isArray(item.loc) ? item.loc.join(".") : "";
+        const msg =
+          "msg" in item && typeof item.msg === "string" ? item.msg : undefined;
         return loc ? loc + ": " + msg : msg;
       })
       .join("; ");
@@ -39,7 +41,11 @@ async function errorText(res: Response): Promise<string> {
   return text || String(res.status);
 }
 
-export async function signAndPost(secret: Uint8Array, body: Canon, nonce: number): Promise<unknown> {
+export async function signAndPost(
+  secret: Uint8Array,
+  body: Canon,
+  nonce: number,
+): Promise<unknown> {
   const signer = bytesToHex(await ed.getPublicKeyAsync(secret));
   const payload = new TextEncoder().encode(canonicalize([body, signer, nonce]));
   const sig = bytesToHex(await ed.signAsync(payload, secret));

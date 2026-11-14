@@ -14,11 +14,25 @@ type Props = {
   onSign: () => void;
 };
 
-export function Wallet({ wallet, trader, account, leverage, error, canSign, signing, onSign }: Props) {
+export function Wallet({
+  wallet,
+  trader,
+  account,
+  leverage,
+  error,
+  canSign,
+  signing,
+  onSign,
+}: Props) {
   return (
     <div className="pad">
       <ConnectButton.Custom>
-        {({ account: connected, mounted, openAccountModal, openConnectModal }) => {
+        {({
+          account: connected,
+          mounted,
+          openAccountModal,
+          openConnectModal,
+        }) => {
           if (!mounted) return null;
           if (!connected) {
             return (
@@ -39,7 +53,12 @@ export function Wallet({ wallet, trader, account, leverage, error, canSign, sign
       </ConnectButton.Custom>
       {wallet && !trader ? (
         <>
-          <button type="button" className="dark wide" disabled={!canSign} onClick={onSign}>
+          <button
+            type="button"
+            className="dark wide"
+            disabled={!canSign}
+            onClick={onSign}
+          >
             {signing ? "Sign in your wallet" : "Enable trading"}
           </button>
           {error ? <div className="error stamp">{error}</div> : null}
