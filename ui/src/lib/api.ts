@@ -1,6 +1,5 @@
-import * as ed from "@noble/ed25519";
-
 import { bytesToHex, canonicalize, type Canon } from "./encode";
+import type { Signer } from "./keystore";
 
 export class TxError extends Error {
   readonly status: number;
@@ -42,13 +41,13 @@ async function errorText(res: Response): Promise<string> {
 }
 
 export async function signAndPost(
-  secret: Uint8Array,
+  key: Signer,
   body: Canon,
   nonce: number,
 ): Promise<unknown> {
-  const signer = bytesToHex(await ed.getPublicKeyAsync(secret));
+  const signer = key.trader;
   const payload = new TextEncoder().encode(canonicalize([body, signer, nonce]));
-  const sig = bytesToHex(await ed.signAsync(payload, secret));
+  const sig = bytesToHex(await key.sign(payload));
   const res = await fetch("/tx", {
     method: "POST",
     headers: { "content-type": "application/octet-stream" },
@@ -56,10 +55,6 @@ export async function signAndPost(
   });
   if (res.ok) return res.json();
   throw new TxError(await errorText(res), res.status);
-}
-
-export async function publicHex(secret: Uint8Array): Promise<string> {
-  return bytesToHex(await ed.getPublicKeyAsync(secret));
 }
 
 export async function readJson<T>(res: Response): Promise<T> {
