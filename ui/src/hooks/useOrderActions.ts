@@ -58,7 +58,7 @@ export function useOrderActions(key: TraderKey | null) {
     markSent(key.trader, sentNonce);
     try {
       await signAndPost(
-        key.secret,
+        key,
         { kind: "place_order", order: { id, trader: key.trader, ...order } },
         sentNonce,
       );
@@ -87,7 +87,7 @@ export function useOrderActions(key: TraderKey | null) {
     markSent(key.trader, sentNonce);
     try {
       await signAndPost(
-        key.secret,
+        key,
         {
           kind: "cancel_order",
           trader: key.trader,

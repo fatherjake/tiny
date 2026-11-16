@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useAccount, useSignMessage } from "wagmi";
 
-import { publicHex } from "../lib/api";
+import { loadSigner, type Signer, unlock } from "../lib/keystore";
 import { keyFromSignature, keyMessage } from "../lib/wallet";
 
-export type TraderKey = { secret: Uint8Array; trader: string };
+export type TraderKey = Signer;
 
 function message(err: unknown): string {
   return err instanceof Error ? err.message || String(err) : String(err);
@@ -17,34 +17,32 @@ export function useTraderSession() {
   const [error, setError] = useState("");
   const [signing, setSigning] = useState(false);
   const token = useRef(0);
-  const signedFor = useRef<string | null>(null);
 
   useEffect(() => {
-    if (signedFor.current === null || signedFor.current === wallet) return;
-    signedFor.current = null;
-    token.current++;
+    const current = ++token.current;
     setKey(null);
     setError("");
     setSigning(false);
+    if (!wallet) return;
+    void loadSigner(wallet).then((stored) => {
+      if (stored && current === token.current) setKey(stored);
+    });
   }, [wallet]);
 
   async function enable() {
     if (!wallet) return;
-    signedFor.current = wallet;
     const current = ++token.current;
     setKey(null);
     setError("");
     setSigning(true);
     try {
       const signature = await signMessageAsync({ message: keyMessage(wallet) });
-      const secret = await keyFromSignature(signature);
-      const trader = await publicHex(secret);
-      if (current === token.current) setKey({ secret, trader });
+      const seed = await keyFromSignature(signature);
+      const signer = await unlock(wallet, seed);
+      seed.fill(0);
+      if (current === token.current) setKey(signer);
     } catch (err) {
-      if (current === token.current) {
-        signedFor.current = null;
-        setError(message(err).split("\n")[0]);
-      }
+      if (current === token.current) setError(message(err).split("\n")[0]);
     } finally {
       if (current === token.current) setSigning(false);
     }
