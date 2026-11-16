@@ -14,11 +14,13 @@ import {
 
 import { useSeries } from "../hooks/useMarket";
 import { usePositionLines } from "../hooks/usePositionLines";
+import { INTERVAL_MS, type Interval } from "../lib/marketQueries";
 import type { Series } from "../types";
 
-type Span = "1m" | "tick";
+type Span = Interval | "tick";
 
-const WINDOW_S = 30 * 60;
+const SPANS: Span[] = ["1m", "5m", "tick"];
+const WINDOW_BARS = 30;
 
 type Plot = {
   chart: IChartApi;
@@ -33,14 +35,13 @@ type Props = {
 };
 
 export function Chart({ market, trader, picked }: Props) {
-  const points = useSeries(market);
+  const [span, setSpan] = useState<Span>("1m");
+  const points = useSeries(market, span === "tick" ? "1m" : span);
   const lines = usePositionLines(trader, picked === market ? market : "");
   const host = useRef<HTMLDivElement>(null);
   const api = useRef<Plot | null>(null);
-  const [span, setSpan] = useState<Span>("1m");
   const spanRef = useRef(span);
   const fitted = useRef<string | null>(null);
-  const shown = shownPrice(points, span);
   spanRef.current = span;
 
   useEffect(() => {
@@ -54,7 +55,7 @@ export function Chart({ market, trader, picked }: Props) {
         textColor: "#000",
         fontFamily: "sans-serif",
         fontSize: 12,
-        attributionLogo: false,
+        attributionLogo: true,
       },
       localization: {
         timeFormatter: (time: Time) => axisLabel(spanRef.current, time),
@@ -151,32 +152,17 @@ export function Chart({ market, trader, picked }: Props) {
 
   return (
     <section className="chart">
-      <div className="row">
-        <b>{market || "chart"}</b>
-        <button
-          type="button"
-          className={span === "1m" ? "on" : ""}
-          onClick={() => setSpan("1m")}
-        >
-          1m
-        </button>
-        <button
-          type="button"
-          className={span === "tick" ? "on" : ""}
-          onClick={() => setSpan("tick")}
-        >
-          tick
-        </button>
-        <button
-          type="button"
-          onClick={() => api.current && fitView(api.current, span, points)}
-        >
-          recenter
-        </button>
-        <span>{shown == null ? "no price" : dollars(shown)}</span>
-        <a href="https://www.tradingview.com/" target="_blank" rel="noreferrer">
-          TradingView
-        </a>
+      <div className="tabs">
+        {SPANS.map((id) => (
+          <button
+            type="button"
+            key={id}
+            className={span === id ? "on" : ""}
+            onClick={() => setSpan(id)}
+          >
+            {id}
+          </button>
+        ))}
       </div>
       <div className="plot" ref={host}>
         {(span === "tick" ? points.ticks : points.bars) == null ? (
@@ -192,9 +178,9 @@ function fitView(plot: Plot, span: Span, points: Series): void {
   const last =
     candles && candles.length > 0 ? candles[candles.length - 1].time : null;
   plot.chart.priceScale("right").applyOptions({ autoScale: true });
-  if (span === "1m" && last != null) {
+  if (span !== "tick" && last != null) {
     plot.chart.timeScale().setVisibleRange({
-      from: (last - WINDOW_S) as UTCTimestamp,
+      from: (last - (WINDOW_BARS * INTERVAL_MS[span]) / 1000) as UTCTimestamp,
       to: last as UTCTimestamp,
     });
   } else if ((span === "tick" ? points.ticks : candles)?.length) {
@@ -212,15 +198,4 @@ function axisLabel(span: Span, time: Time): string {
   const date = new Date(time * 1000);
   const pad = (part: number) => String(part).padStart(2, "0");
   return pad(date.getHours()) + ":" + pad(date.getMinutes());
-}
-
-function shownPrice(points: Series, span: Span): number | null {
-  if (span === "tick") {
-    const rows = points.ticks;
-    const last = rows && rows.length > 0 ? rows[rows.length - 1] : undefined;
-    return last ? last.value : null;
-  }
-  const rows = points.bars;
-  const last = rows && rows.length > 0 ? rows[rows.length - 1] : undefined;
-  return last ? last.close : null;
 }

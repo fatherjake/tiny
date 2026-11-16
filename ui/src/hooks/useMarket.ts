@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import {
   booksQuery,
   candlesQuery,
+  type Interval,
   feedQuery,
   fundingQuery,
   marketsQuery,
@@ -54,9 +55,12 @@ export function useTrades<T>(market: string, select?: (trades: Trade[]) => T) {
   return select ? data : (data ?? NONE);
 }
 
-export function useSeries(market: string): Series {
+export function useSeries(market: string, interval: Interval): Series {
   const on = market !== "";
-  const candles = useQuery({ ...candlesQuery(market), enabled: on }).data;
+  const candles = useQuery({
+    ...candlesQuery(market, interval),
+    enabled: on,
+  }).data;
   const trades = useQuery({ ...tradesQuery(market), enabled: on }).data;
   return useMemo(() => seed(candles ?? {}, trades ?? []), [candles, trades]);
 }

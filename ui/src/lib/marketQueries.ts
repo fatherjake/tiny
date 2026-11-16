@@ -20,7 +20,8 @@ export const marketKeys = {
   list: ["market", "list"] as const,
   books: ["market", "books"] as const,
   trades: (market: string) => ["market", "trades", market] as const,
-  candles: (market: string) => ["market", "candles", market] as const,
+  candles: (market: string, interval: Interval) =>
+    ["market", "candles", market, interval] as const,
   funding: (market: string) => ["market", "funding", market] as const,
 };
 
@@ -33,6 +34,8 @@ export const feedQuery = queryOptions({
 });
 
 export const TICK_TRADES = 2_000;
+export const INTERVAL_MS = { "1m": 60_000, "5m": 300_000 } as const;
+export type Interval = keyof typeof INTERVAL_MS;
 const PAGE = 500;
 
 async function getJson<T>(url: string, signal: AbortSignal): Promise<T> {
@@ -115,15 +118,22 @@ export const tradesQuery = (market: string) =>
     staleTime: Infinity,
   });
 
-export const candlesQuery = (market: string) =>
+export const candlesQuery = (market: string, interval: Interval) =>
   queryOptions({
-    queryKey: marketKeys.candles(market),
+    queryKey: marketKeys.candles(market, interval),
     queryFn: async ({ client, queryKey, signal }) => {
       const prev = client.getQueryData<Series>(queryKey) ?? {};
       const last = prev.bars?.at(-1);
-      const start = last == null ? "" : "&start=" + (last.time * 1000 - 60_000);
+      const start =
+        last == null
+          ? ""
+          : "&start=" + (last.time * 1000 - INTERVAL_MS[interval]);
       const rows = await getJson<StoredCandle[]>(
-        "/candles/" + encodeURIComponent(market) + "?interval=1m" + start,
+        "/candles/" +
+          encodeURIComponent(market) +
+          "?interval=" +
+          interval +
+          start,
         signal,
       );
       return applyCandles(prev, rows);
