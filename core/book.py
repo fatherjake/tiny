@@ -1,5 +1,5 @@
 """
-    CLOB, one per market. Price-time priority.
+CLOB, one per market. Price-time priority.
 """
 
 from __future__ import annotations

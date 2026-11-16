@@ -1,6 +1,6 @@
 """
-    The deterministic state machine, applied block by block to committed blocks.
-    Owns accounts, positions, order books, oracle prices, funding, liquidations and bridge credits.
+The deterministic state machine, applied block by block to committed blocks.
+Owns accounts, positions, order books, oracle prices, funding, liquidations and bridge credits.
 """
 
 from __future__ import annotations

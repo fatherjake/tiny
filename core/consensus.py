@@ -1,8 +1,8 @@
 """
-    Chained HotStuff validators.
+Chained HotStuff validators.
 
-    Consensus orders transactions. It never looks inside them.
-    Committed blocks are handed to the state machine
+Consensus orders transactions. It never looks inside them.
+Committed blocks are handed to the state machine
 """
 
 from __future__ import annotations
