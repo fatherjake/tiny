@@ -1,11 +1,13 @@
 import type { CSSProperties } from "react";
 
+import { useFlash } from "../hooks/useFlash";
 import { spreadMid } from "../lib/series";
 import { bi, fmt, usd } from "../lib/scale";
 import type { Depth, Level, Scaled } from "../types";
 
 type Props = {
   book: Depth | null;
+  mine: Set<string>;
   onPrice: (price: Scaled) => void;
 };
 
@@ -24,7 +26,43 @@ function depthStyle(pct: number): CSSProperties {
   return { "--w": pct + "%" } as CSSProperties;
 }
 
-export function Book({ book, onPrice }: Props) {
+export function mineKey(side: "ask" | "bid", price: Scaled): string {
+  return side + ":" + bi(price).toString();
+}
+
+function LevelRow({
+  row,
+  side,
+  pct,
+  mine,
+  onPrice,
+}: {
+  row: Row;
+  side: "ask" | "bid";
+  pct: number;
+  mine: boolean;
+  onPrice: (price: Scaled) => void;
+}) {
+  const flash = useFlash(row.size);
+  const className = [side, flash, mine ? "mine" : ""].filter(Boolean).join(" ");
+  return (
+    <tr className={className} style={depthStyle(pct)}>
+      <td className="l">
+        <button
+          type="button"
+          className={"px " + side}
+          onClick={() => onPrice(row.price)}
+        >
+          {usd(row.price)}
+        </button>
+      </td>
+      <td>{fmt(row.size)}</td>
+      <td>{fmt(row.total)}</td>
+    </tr>
+  );
+}
+
+export function Book({ book, mine, onPrice }: Props) {
   const askRows = totals(book?.asks ?? []).reverse();
   const bidRows = totals(book?.bids ?? []);
   let max = 1n;
@@ -34,19 +72,14 @@ export function Book({ book, onPrice }: Props) {
     let pct = Number((row.total * 100n) / max);
     if (row.total > 0n && pct < 1) pct = 1;
     return (
-      <tr key={key} className={side} style={depthStyle(pct)}>
-        <td className="l">
-          <button
-            type="button"
-            className={"px " + side}
-            onClick={() => onPrice(row.price)}
-          >
-            {usd(row.price)}
-          </button>
-        </td>
-        <td>{fmt(row.size)}</td>
-        <td>{fmt(row.total)}</td>
-      </tr>
+      <LevelRow
+        key={key}
+        row={row}
+        side={side}
+        pct={pct}
+        mine={mine.has(mineKey(side, row.price))}
+        onPrice={onPrice}
+      />
     );
   };
   const { spread, pct } = spreadMid(book);

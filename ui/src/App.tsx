@@ -57,7 +57,7 @@ export function App() {
     <div className="app" style={{ "--dock": dock + "px" } as CSSProperties}>
       <Header ws={ws} selected={selected} onSelect={setChosen} />
       <Chart market={selected} />
-      <Ladder market={selected} onPrice={onPrice} />
+      <Ladder market={selected} trader={traderId} onPrice={onPrice} />
       <section className="side">
         <Wallet
           wallet={trader.wallet}
