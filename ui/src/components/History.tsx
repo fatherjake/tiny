@@ -75,8 +75,10 @@ export function Fills({
               return (
                 <tr key={row.id}>
                   <td>{row.height}</td>
-                  <td className={side === "buy" ? "bid" : "ask"}>{side}</td>
-                  <td>{usd(row.price)}</td>
+                  <td className="l">{side}</td>
+                  <td className={side === "buy" ? "bid" : "ask"}>
+                    {usd(row.price)}
+                  </td>
                   <td>{fmt(row.size)}</td>
                   <td>{row.liquidation ? "yes" : ""}</td>
                 </tr>
