@@ -105,7 +105,7 @@ function OrdersPane({
 }
 
 function FillsPane({ trader }: { trader: string }) {
-  return <Fills rows={useFills(trader)} />;
+  return <Fills rows={useFills(trader)} trader={trader} />;
 }
 
 function HistoryPane({ trader }: { trader: string }) {

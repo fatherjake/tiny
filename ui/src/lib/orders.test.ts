@@ -6,6 +6,7 @@ import {
   bpsPct,
   closeOrder,
   currentPrice,
+  fillSide,
   liquidationPrice,
   marketPrice,
   midPrice,
@@ -275,5 +276,18 @@ describe("bpsPct", () => {
   it("shows bps as a percentage to four places", () => {
     expect(bpsPct(5)).toBe("0.0500%");
     expect(bpsPct(2)).toBe("0.0200%");
+  });
+});
+
+describe("fillSide", () => {
+  const fill = { taker: "aa", maker: "bb", side: "sell" as const };
+
+  it("is the stored side for the taker", () => {
+    expect(fillSide(fill, "aa")).toBe("sell");
+  });
+
+  it("is the other side for the maker whose resting order was hit", () => {
+    expect(fillSide(fill, "bb")).toBe("buy");
+    expect(fillSide({ ...fill, side: "buy" }, "bb")).toBe("sell");
   });
 });
