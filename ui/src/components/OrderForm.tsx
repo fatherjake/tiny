@@ -14,6 +14,8 @@ import { unscale, usd } from "../lib/scale";
 import { fieldOf, KEYS, shortcut } from "../lib/shortcuts";
 import type { OrderDraft } from "../types";
 
+const LEGEND_MS = 2_000;
+
 function Key({ show, label }: { show: boolean; label: string }) {
   return show ? <kbd className="key">{label}</kbd> : null;
 }
@@ -56,6 +58,7 @@ export function OrderForm({
     patch({ price: unscale(prefill) });
   }, [selected, prefill, patch]);
   const [legend, setLegend] = useState(false);
+  const legendTimer = useRef(0);
   const priceInput = useRef<HTMLInputElement>(null);
   const sizeInput = useRef<HTMLInputElement>(null);
   const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
@@ -64,6 +67,8 @@ export function OrderForm({
     if (!action) return;
     event.preventDefault();
     setLegend(true);
+    window.clearTimeout(legendTimer.current);
+    legendTimer.current = window.setTimeout(() => setLegend(false), LEGEND_MS);
     switch (action.kind) {
       case "type":
         patch({ type: action.type });
@@ -89,14 +94,10 @@ export function OrderForm({
   });
   useEffect(() => {
     const down = (event: KeyboardEvent) => onKeyDown(event);
-    const hide = () => setLegend(false);
     window.addEventListener("keydown", down);
-    window.addEventListener("pointerdown", hide);
-    window.addEventListener("blur", hide);
     return () => {
       window.removeEventListener("keydown", down);
-      window.removeEventListener("pointerdown", hide);
-      window.removeEventListener("blur", hide);
+      window.clearTimeout(legendTimer.current);
     };
   }, []);
   const base = market?.name.split("-")[0] ?? "";
