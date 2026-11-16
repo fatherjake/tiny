@@ -4,6 +4,7 @@ import { useRef } from "react";
 import { useWebSocket } from "./useWebSocket";
 import { accountKeys } from "../lib/accountQueries";
 import { advance, START } from "../lib/gaps";
+import { inclusionMs, inclusionQuery, lastBlockQuery } from "../lib/latency";
 import { feedQuery, marketKeys, TICK_TRADES } from "../lib/marketQueries";
 import type { BlockMsg, Depth, Status, Trade } from "../types";
 
@@ -27,6 +28,11 @@ export function useMarketStream() {
     }
     cursor.current = next.cursor;
     if (msg.type === "block") {
+      client.setQueryData(lastBlockQuery.queryKey, Date.now());
+      const included = inclusionMs(msg.txs ?? []);
+      if (included != null) {
+        client.setQueryData(inclusionQuery.queryKey, included);
+      }
       if (Date.now() - lastAccount.current >= REFRESH_MS) {
         lastAccount.current = Date.now();
         void client.invalidateQueries({ queryKey: accountKeys.all });

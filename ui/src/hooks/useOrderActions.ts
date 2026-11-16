@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAccountSelect, useOrderHistory } from "./useAccount";
 import { accountQuery } from "../lib/accountQueries";
 import { TxError, signAndPost } from "../lib/api";
+import { forgetSent, markSent } from "../lib/latency";
 import { marketKeys } from "../lib/marketQueries";
 import { closeOrder, outcome } from "../lib/orders";
 import type { AccountView, Depth, OpenOrder, Position } from "../types";
@@ -54,6 +55,7 @@ export function useOrderActions(key: TraderKey | null) {
     setPending(true);
     const sentNonce = Math.max(localNonce.current, accountNonce) + 1;
     const id = nextId.current;
+    markSent(key.trader, sentNonce);
     try {
       await signAndPost(
         key.secret,
@@ -66,6 +68,7 @@ export function useOrderActions(key: TraderKey | null) {
       setBad(false);
       setNote("order " + id + " sent, waiting for a block");
     } catch (err) {
+      forgetSent(key.trader, sentNonce);
       if (err instanceof TxError && err.status === 400) {
         const fresh = await refreshAccount();
         if (fresh)
@@ -81,6 +84,7 @@ export function useOrderActions(key: TraderKey | null) {
     if (!key || pending) return;
     setPending(true);
     const sentNonce = Math.max(localNonce.current, accountNonce) + 1;
+    markSent(key.trader, sentNonce);
     try {
       await signAndPost(
         key.secret,
@@ -96,6 +100,7 @@ export function useOrderActions(key: TraderKey | null) {
       setBad(false);
       setNote("accepted nonce " + sentNonce);
     } catch (err) {
+      forgetSent(key.trader, sentNonce);
       setBad(true);
       setNote(message(err));
     } finally {

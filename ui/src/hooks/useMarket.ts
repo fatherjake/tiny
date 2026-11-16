@@ -10,6 +10,7 @@ import {
   statusQuery,
   tradesQuery,
 } from "../lib/marketQueries";
+import { inclusionQuery, lastBlockQuery } from "../lib/latency";
 import { seed } from "../lib/series";
 import type { MarketInfo, Series, Trade } from "../types";
 
@@ -68,4 +69,12 @@ export function useFunding(market: string) {
 
 export function useFeed() {
   return useQuery(feedQuery).data;
+}
+
+export function useLastBlockAt() {
+  return useQuery(lastBlockQuery).data;
+}
+
+export function useInclusionMs() {
+  return useQuery(inclusionQuery).data;
 }

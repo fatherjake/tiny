@@ -61,6 +61,7 @@ export type Status = {
   tip?: string | null;
   mempool?: number;
   state_root?: string;
+  rttMs?: number;
 };
 
 export type Position = {

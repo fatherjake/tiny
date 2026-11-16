@@ -54,7 +54,10 @@ export function App() {
     [patch],
   );
   return (
-    <div className="app" style={{ "--dock": dock + "px" } as CSSProperties}>
+    <div
+      className={ws === "live" ? "app" : "app stale"}
+      style={{ "--dock": dock + "px" } as CSSProperties}
+    >
       <Header ws={ws} selected={selected} onSelect={setChosen} />
       <Chart market={selected} />
       <Ladder market={selected} trader={traderId} onPrice={onPrice} />

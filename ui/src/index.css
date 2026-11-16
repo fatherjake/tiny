@@ -436,3 +436,18 @@ td.flash-down.flash-1 {
     animation: none !important;
   }
 }
+.chart,
+.depth,
+.dock .pane,
+header .quote:first-child {
+  transition:
+    opacity 0.2s,
+    filter 0.2s;
+}
+.app.stale .chart,
+.app.stale .depth,
+.app.stale .dock .pane,
+.app.stale header .quote:first-child {
+  opacity: 0.45;
+  filter: grayscale(1);
+}
