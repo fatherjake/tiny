@@ -1,7 +1,5 @@
 import * as ed from "@noble/ed25519";
 
-// A wallet signs this once and the signature's hash becomes the tiny trading key, so the
-// same wallet always opens the same account. Changing the text changes every derived key.
 export function keyMessage(address: string): string {
   return [
     "tiny trading key",

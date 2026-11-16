@@ -25,7 +25,6 @@ function depthStyle(pct: number): CSSProperties {
 }
 
 export function Book({ book, onPrice }: Props) {
-  // Rows past what fits are clipped at the card's edge, so take every level the feed sends.
   const askRows = totals(book?.asks ?? []).reverse();
   const bidRows = totals(book?.bids ?? []);
   let max = 1n;

@@ -18,7 +18,6 @@ const first = (trades: Trade[]) => trades[0];
 
 const YEAR_MS = 365n * 24n * 3_600_000n;
 
-// Funding paid over the last hour (or since genesis), as a yearly rate of the oracle price.
 function annual(market: MarketInfo | null): string {
   const base = market?.funding_base;
   if (

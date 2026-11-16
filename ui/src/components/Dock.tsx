@@ -18,7 +18,6 @@ type Props = {
   trader: string;
   onCancel: (order: OpenOrder) => void;
   onClose: (pos: Position) => void;
-  // Called with the height the dock should take, from where its top edge is dragged to.
   onResize: (height: number) => void;
 };
 

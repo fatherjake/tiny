@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-// TradingView Lightweight Charts. Copyright (c) 2025 TradingView, Inc. https://www.tradingview.com/
 import {
   type AutoscaleInfo,
   CandlestickSeries,
@@ -17,8 +16,6 @@ import type { Series } from "../types";
 
 type Span = "1m" | "tick";
 
-// The 1m view opens on the last 30 minutes. Its price scale is centred on the last close and
-// reaches just past the furthest visible high or low, but never closer than MIN_HALF.
 const WINDOW_S = 30 * 60;
 const PAD = 1.15;
 const MIN_HALF = 0.0005;
@@ -66,7 +63,6 @@ export function Chart({ market }: Props) {
         vertLines: { color: "rgba(0, 0, 0, 0.12)" },
         horzLines: { color: "rgba(0, 0, 0, 0.12)" },
       },
-      // Equal margins, so the centred price sits in the middle of the plot.
       rightPriceScale: {
         borderColor: edge,
         scaleMargins: { top: 0.05, bottom: 0.05 },
@@ -175,7 +171,6 @@ export function Chart({ market }: Props) {
         </a>
       </div>
       <div className="plot" ref={host}>
-        {/* Until the data this view draws arrives: candles for 1m, trades for tick. */}
         {(span === "tick" ? points.ticks : points.bars) == null ? (
           <progress className="loading" aria-label="loading chart" />
         ) : null}

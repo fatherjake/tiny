@@ -8,8 +8,6 @@ import {
 } from "../lib/accountQueries";
 import type { AccountView } from "../types";
 
-// The trader is "" until a key is enabled, which leaves every query idle.
-
 const NONE: never[] = [];
 
 export function useAccount(trader: string) {

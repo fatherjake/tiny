@@ -18,8 +18,6 @@ const nonceOf = (account: AccountView | null) => account?.nonce ?? 0;
 export function useOrderActions(key: TraderKey | null) {
   const client = useQueryClient();
   const trader = key?.trader ?? "";
-  // Only the nonce, so a mark move that changes the account value does not
-  // re-render whoever holds these actions.
   const accountNonce = useAccountSelect(trader, nonceOf) ?? 0;
   const history = useOrderHistory(trader);
   const refreshAccount = () =>
@@ -105,7 +103,6 @@ export function useOrderActions(key: TraderKey | null) {
     }
   }
   async function close(pos: Position) {
-    // Read at click time, so placing orders does not subscribe to every book frame.
     const books = client.getQueryData<Record<string, Depth>>(marketKeys.books);
     const order = closeOrder(pos, books?.[pos.market] ?? null);
     if (!order) {

@@ -14,8 +14,6 @@ import type {
   Trade,
 } from "../types";
 
-// Every key starts with "market", so a resync can invalidate them all without
-// touching wagmi's queries in the same client.
 export const marketKeys = {
   all: ["market"] as const,
   status: ["market", "status"] as const,
@@ -26,9 +24,6 @@ export const marketKeys = {
   funding: (market: string) => ["market", "funding", market] as const,
 };
 
-// Filled only by block frames, so there is nothing to fetch. It sits outside
-// the "market" prefix so a resync keeps it, and is never collected while the
-// Blocks tab is closed.
 export const feedQuery = queryOptions({
   queryKey: ["stream", "feed"] as const,
   queryFn: (): BlockMsg[] => [],
@@ -69,8 +64,6 @@ export const marketsQuery = queryOptions({
   queryFn: ({ signal }) => getJson<MarketInfo[]>("/markets", signal),
 });
 
-// One entry for every market's depth: closing a position reads the book of its
-// market, not the selected one. Book frames keep it current.
 export const booksQuery = queryOptions({
   queryKey: marketKeys.books,
   queryFn: async ({ client, signal }) => {
@@ -92,7 +85,6 @@ export const booksQuery = queryOptions({
   staleTime: Infinity,
 });
 
-// Newest first. Trade frames prepend to it.
 export const tradesQuery = (market: string) =>
   queryOptions({
     queryKey: marketKeys.trades(market),
@@ -119,7 +111,6 @@ export const tradesQuery = (market: string) =>
     staleTime: Infinity,
   });
 
-// Each refetch asks only for the bars from the last cached minute on.
 export const candlesQuery = (market: string) =>
   queryOptions({
     queryKey: marketKeys.candles(market),

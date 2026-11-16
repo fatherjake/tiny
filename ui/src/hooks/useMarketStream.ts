@@ -10,8 +10,6 @@ import type { BlockMsg, Depth, Status, Trade } from "../types";
 const REFRESH_MS = 250;
 const FEED_LIMIT = 50;
 
-// Call once, at the root. Writes socket frames into the query cache and
-// returns only the connection status, so the root does not re-render per frame.
 export function useMarketStream() {
   const client = useQueryClient();
   const lastAccount = useRef(0);
@@ -29,8 +27,6 @@ export function useMarketStream() {
     }
     cursor.current = next.cursor;
     if (msg.type === "block") {
-      // A block can change fills, orders and margin. Blocks come faster than
-      // the account needs, so refetch it at most once per REFRESH_MS.
       if (Date.now() - lastAccount.current >= REFRESH_MS) {
         lastAccount.current = Date.now();
         void client.invalidateQueries({ queryKey: accountKeys.all });
@@ -52,8 +48,6 @@ export function useMarketStream() {
       }));
     } else {
       const { type: _type, ...trade } = msg;
-      // Before the first load there is nothing to prepend to, and the load
-      // itself returns this trade.
       client.setQueryData<Trade[]>(marketKeys.trades(trade.market), (prev) =>
         prev == null || prev.some((row) => row.seq === trade.seq)
           ? prev

@@ -75,15 +75,12 @@ export function midPrice(
   return snapped > 0n ? snapped : null;
 }
 
-// Dollars to a base size at `price`, rounded down to the lot.
 export function sizeFromUsd(usd: bigint, price: bigint, lot: bigint): bigint {
   if (price <= 0n) return 0n;
   const size = (usd * SCALE) / price;
   return lot > 0n ? size - (size % lot) : size;
 }
 
-// What the chain checks a new order against: account value less the initial margin, at each
-// market's max leverage, of open positions at mark and of resting orders.
 export function availableMargin(
   account: AccountView | null,
   markets: MarketInfo[],
@@ -144,8 +141,6 @@ export function previewOrder(
       : null;
   const notional =
     size != null && sizePrice != null ? (size * sizePrice) / SCALE : null;
-  // The chain reserves initial margin at the submitted price. For a market order that is the
-  // slippage cap, even though sizing and the expected fill use the touch.
   const requiredMargin =
     size != null && sendPrice != null
       ? (size * sendPrice) / SCALE / BigInt(lev)
@@ -202,7 +197,6 @@ export function previewOrder(
 
 export type Holding = { collateral: bigint; size: bigint; entry: bigint };
 
-// The account after filling `size` (signed: >0 buys) at `price`, as core/state.py _apply_fill.
 export function afterFill(
   held: Holding,
   size: bigint,
@@ -231,8 +225,6 @@ export function afterFill(
   return { collateral, size: next, entry };
 }
 
-// The mark at which account value falls to maintenance margin, for one market held in cross.
-// Long: C + s*p - E = s*p*mm. Short: C + E - s*p = s*p*mm. Null when flat or never liquidated.
 export function liquidationPrice(
   held: Holding,
   maintenanceBps: bigint,
@@ -248,7 +240,6 @@ export function liquidationPrice(
   return price > 0n ? price : null;
 }
 
-// "0.0500%" from 5 bps.
 export function bpsPct(bps: number): string {
   return (bps / 100).toFixed(4) + "%";
 }
@@ -275,7 +266,6 @@ export function outcome(
 
 export type CloseOrder = { side: "buy" | "sell"; size: bigint; price: bigint };
 
-// Closing is a reduce-only market order for the whole position on the other side.
 export function closeOrder(
   pos: Position,
   book: Depth | null,

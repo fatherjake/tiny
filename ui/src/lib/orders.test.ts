@@ -123,7 +123,6 @@ describe("midPrice", () => {
 
 describe("sizeFromUsd", () => {
   it("rounds the base size down to the lot", () => {
-    // $10 at $2,254.20 is 0.004436... ETH, so 0.0044 on a 0.0001 lot.
     expect(sizeFromUsd(10_000_000n, 2_254_200_000n, 100n)).toBe(4_400n);
     expect(sizeFromUsd(10_000_000n, 0n, 100n)).toBe(0n);
   });
@@ -164,7 +163,6 @@ describe("availableMargin", () => {
       price: 50_000_000n,
       size: 4_000_000n,
     };
-    // $1,000 less $20 for the $200 short and $20 for the $200 bid, both at 10x.
     expect(availableMargin(account, markets, [order])).toBe(960_000_000n);
   });
 
@@ -214,7 +212,6 @@ describe("afterFill", () => {
   const flat = { collateral: 1_000_000_000n, size: 0n, entry: 0n };
 
   it("opens, charges the fee, and adds to the entry", () => {
-    // Buy 0.1 at $50,000: $5,000 notional, $2.50 taker fee at 5 bps.
     expect(afterFill(flat, 100_000n, 50_000_000_000n, 5n)).toEqual({
       collateral: 997_500_000n,
       size: 100_000n,
@@ -228,7 +225,6 @@ describe("afterFill", () => {
       size: 200_000n,
       entry: 10_000_000_000n,
     };
-    // Sell half at $51,000, no fee: $100 profit, half the entry left.
     expect(afterFill(long, -100_000n, 51_000_000_000n, 0n)).toEqual({
       collateral: 1_100_000_000n,
       size: 100_000n,
@@ -252,15 +248,12 @@ describe("afterFill", () => {
 
 describe("liquidationPrice", () => {
   it("solves value = maintenance for a long and a short", () => {
-    // 0.2 BTC long, $10,000 entry, $1,000 collateral, 3% maintenance:
-    // p = (10,000 - 1,000) / (0.2 * 0.97) = $46,391.75...
     const long = {
       collateral: 1_000_000_000n,
       size: 200_000n,
       entry: 10_000_000_000n,
     };
     expect(liquidationPrice(long, 300n)).toBe(46_391_752_577n);
-    // Short: p = (1,000 + 10,000) / (0.2 * 1.03) = $53,398.05...
     const short = { ...long, size: -200_000n };
     expect(liquidationPrice(short, 300n)).toBe(53_398_058_252n);
   });

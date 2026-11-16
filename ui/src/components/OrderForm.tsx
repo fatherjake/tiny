@@ -38,7 +38,6 @@ export function OrderForm({
   const orders = useOpenOrders(trader);
   const pricedFor = useRef("");
   const prefill = currentPrice(market);
-  // Start the price at the market's current price, once per market.
   useEffect(() => {
     if (prefill == null || pricedFor.current === selected) return;
     pricedFor.current = selected;
