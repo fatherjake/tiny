@@ -55,7 +55,11 @@ function asPrint(row: StoredTrade): Trade {
 
 export const statusQuery = queryOptions({
   queryKey: marketKeys.status,
-  queryFn: ({ signal }) => getJson<Status>("/status", signal),
+  queryFn: async ({ signal }) => {
+    const start = performance.now();
+    const status = await getJson<Status>("/status", signal);
+    return { ...status, rttMs: Math.round(performance.now() - start) };
+  },
   refetchInterval: 1_000,
 });
 

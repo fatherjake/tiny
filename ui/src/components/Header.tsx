@@ -1,4 +1,8 @@
+import { useEffect, useState } from "react";
+
 import {
+  useInclusionMs,
+  useLastBlockAt,
   useMarket,
   useMarketsSelect,
   useStatus,
@@ -34,7 +38,20 @@ function annual(market: MarketInfo | null): string {
   return pct(paid * YEAR_MS, bi(market.oracle_price) * elapsed);
 }
 
+function SinceBlock() {
+  const at = useLastBlockAt();
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 200);
+    return () => window.clearInterval(id);
+  }, []);
+  const ago =
+    at == null ? "-" : (Math.max(0, now - at) / 1000).toFixed(1) + "s";
+  return <span title="since the last block arrived">block {ago}</span>;
+}
+
 export function Header({ ws, selected, onSelect }: Props) {
+  const inclusion = useInclusionMs();
   const status = useStatus();
   const market = useMarket(selected);
   const markets = useMarketsSelect(names) ?? [];
@@ -74,6 +91,13 @@ export function Header({ ws, selected, onSelect }: Props) {
         <span>height {status?.height ?? "-"}</span>
         <span>view {status?.view ?? "-"}</span>
         <span>{short(status?.tip)}</span>
+        <span title="round trip to /status">
+          rtt {status?.rttMs == null ? "-" : status.rttMs + "ms"}
+        </span>
+        <SinceBlock />
+        <span title="your last order, from submit to its block">
+          incl {inclusion == null ? "-" : inclusion + "ms"}
+        </span>
         <b>{ws}</b>
       </div>
     </header>

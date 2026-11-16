@@ -25,8 +25,6 @@ function upnl(pos: Position, mark: Scaled | null | undefined): bigint | null {
   return size > 0n ? notional - entry : entry - notional;
 }
 
-const CENT = 10_000n;
-
 function PnlCell({
   pnl,
   margin,
@@ -34,7 +32,7 @@ function PnlCell({
   pnl: bigint | null;
   margin: bigint | null;
 }) {
-  const flash = useFlash(pnl == null ? null : pnl / CENT);
+  const flash = useFlash(pnl == null ? null : pnl > 0n ? 1n : -1n);
   const tone = pnl == null || pnl === 0n ? "" : pnl > 0n ? "up" : "down";
   const share = pctShort(pnl, margin);
   return (
