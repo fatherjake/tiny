@@ -24,8 +24,6 @@ function savedDock(): number {
 
 const firstName = (markets: MarketInfo[]) => markets[0]?.name ?? "";
 
-// The root holds only what changes rarely. Components read market data from
-// the query cache themselves, so socket frames do not re-render the whole app.
 export function App() {
   const ws = useMarketStream();
   const [chosen, setChosen] = useState("");
@@ -105,9 +103,7 @@ export function App() {
           setDock(next);
           try {
             localStorage.setItem(DOCK_KEY, String(next));
-          } catch {
-            /* Keep page preference. */
-          }
+          } catch {}
         }}
       />
     </div>

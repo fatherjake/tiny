@@ -1,5 +1,3 @@
-// core/types.py encode: sorted keys, separators "," and ":", ensure_ascii, ints only.
-
 export type Canon =
   | null
   | boolean

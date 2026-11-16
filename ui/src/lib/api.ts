@@ -51,8 +51,6 @@ export async function signAndPost(
   const sig = bytesToHex(await ed.signAsync(payload, secret));
   const res = await fetch("/tx", {
     method: "POST",
-    // application/json is decoded before the bytes parameter, so the handler
-    // never sees the raw document. The body is still the JSON object.
     headers: { "content-type": "application/octet-stream" },
     body: canonicalize({ body, signer, nonce, sig }),
   });
@@ -64,7 +62,6 @@ export async function publicHex(secret: Uint8Array): Promise<string> {
   return bytesToHex(await ed.getPublicKeyAsync(secret));
 }
 
-// core/api.py is the schema. Callers name the shape they read.
 export async function readJson<T>(res: Response): Promise<T> {
   return (await res.json()) as T;
 }

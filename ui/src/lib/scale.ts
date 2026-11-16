@@ -58,7 +58,6 @@ export function short(value: unknown): string {
   return String(value).slice(0, 8);
 }
 
-// "0x123...abc" for a wallet, "1234...abcd" for a trader key.
 export function shorten(value: string, head: number, tail: number): string {
   return value.length <= head + tail + 3
     ? value
@@ -84,7 +83,6 @@ export function pct(
   );
 }
 
-// Dollars: "$1,234.57", rounded half up to the cent.
 export function usd(n: Scaled | null | undefined | ""): string {
   if (n == null || n === "") return "-";
   const v = bi(n);

@@ -8,8 +8,6 @@ import type {
   StoredTrade,
 } from "../types";
 
-// Block frames invalidate everything under "account", so a fill or a mark move
-// shows within a block. The interval covers the time the socket is down.
 export const accountKeys = {
   all: ["account"] as const,
   view: (trader: string) => ["account", trader, "view"] as const,
@@ -44,7 +42,6 @@ export const accountQuery = (trader: string) =>
     queryKey: accountKeys.view(trader),
     queryFn: async ({ signal }) => {
       const res = await fetch("/account/" + trader, { signal });
-      // An account that has never been funded.
       if (res.status === 404) return null;
       if (!res.ok) throw new Error("/account answered " + res.status);
       return readJson<AccountView>(res);

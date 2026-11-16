@@ -13,9 +13,6 @@ import {
 import { seed } from "../lib/series";
 import type { MarketInfo, Series, Trade } from "../types";
 
-// Each component reads the slice it shows. With `select`, a component only
-// re-renders when its slice changes, not on every frame for the whole cache.
-
 const NONE: never[] = [];
 
 export function useStatus() {

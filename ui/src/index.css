@@ -214,8 +214,6 @@ button.px {
   padding: 0;
   background: transparent;
 }
-/* Header, asks, spread, bids. The two sides split the rest evenly so the spread row stays
-   in the middle; asks hug the spread from above, bids from below, and overflow is clipped. */
 .book table {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto minmax(0, 1fr);

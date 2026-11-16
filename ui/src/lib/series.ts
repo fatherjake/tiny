@@ -35,11 +35,8 @@ export type CandleRow = {
   close: Scaled;
 };
 
-// Rows replace any bars from the first row's time on. Older bars are kept, so a refresh can
-// send only the latest minutes.
 export function applyCandles(book: Series, rows: CandleRow[]): Series {
   const ordered = [...rows].sort((a, b) => Number(a.ts) - Number(b.ts));
-  // An empty first answer still marks the candles as loaded.
   if (ordered.length === 0) return book.bars ? book : { ...book, bars: [] };
   const from = Math.floor(Number(ordered[0].ts) / 1000);
   const bars: NonNullable<Series["bars"]> = (book.bars ?? []).filter(
@@ -64,7 +61,6 @@ export function applyCandles(book: Series, rows: CandleRow[]): Series {
 
 type SeedRow = { height: number; price?: Scaled | null };
 
-// Rows are newest first. Keeps one point per block, the latest trade's price.
 export function seed(book: Series, rows: SeedRow[]): Series {
   const ticks = [...(book.ticks ?? [])];
   let changed = false;
