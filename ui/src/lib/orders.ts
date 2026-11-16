@@ -294,3 +294,30 @@ export function positionValue(
   const abs = size < 0n ? -size : size;
   return (abs * bi(mark)) / SCALE;
 }
+
+export type PositionRisk = {
+  liquidation: bigint | null;
+  toLiquidation: bigint | null;
+  margin: bigint;
+};
+
+export function positionRisk(
+  size: bigint,
+  entry: bigint,
+  collateral: bigint,
+  mark: Scaled | null | undefined,
+  market: MarketInfo,
+): PositionRisk {
+  const liquidation = liquidationPrice(
+    { collateral, size, entry },
+    BigInt(market.maintenance_margin_bps),
+  );
+  const markPrice = mark == null ? null : bi(mark);
+  const gap =
+    liquidation == null || markPrice == null ? null : markPrice - liquidation;
+  return {
+    liquidation,
+    toLiquidation: gap == null ? null : gap < 0n ? -gap : gap,
+    margin: entry / BigInt(Math.max(1, market.max_leverage)),
+  };
+}
