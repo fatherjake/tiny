@@ -127,6 +127,8 @@ def drive(
     """Advance virtual time in small steps so the API can read commits as they happen."""
     while not stop.is_set():
         with lock:
+            if stop.is_set():
+                return
             net.run_for(PACE_MS)
             now = net.now
             for bot in bots:
@@ -157,6 +159,16 @@ def wall_clock(nodes: list[Node]) -> None:
 
     for node in nodes:
         node.consensus.now_ms = now_ms
+
+
+def shutdown(nodes: list[Node], stop: threading.Event, lock: threading.RLock) -> None:
+    """Stop the cluster, then close node 0's db so SQLite folds its WAL into the main file."""
+    stop.set()
+    with lock:
+        for node in nodes:
+            node.stop()
+        if isinstance(nodes[0].store, SqliteStore):
+            nodes[0].store.close()
 
 
 def main() -> None:
@@ -200,9 +212,7 @@ def main() -> None:
     try:
         uvicorn.run(create_app(nodes[0]), host="127.0.0.1", port=args.api_port, log_level="info")
     finally:
-        stop.set()
-        for node in nodes:
-            node.stop()
+        shutdown(nodes, stop, lock)
 
 
 if __name__ == "__main__":
