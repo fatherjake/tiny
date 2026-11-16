@@ -1,3 +1,4 @@
+import { fillSide } from "../lib/orders";
 import { fmt, pct, usd } from "../lib/scale";
 import type {
   FundingRow,
@@ -48,7 +49,13 @@ export function OrderHistory({ orders }: { orders: StoredOrder[] }) {
   );
 }
 
-export function Fills({ rows }: { rows: StoredTrade[] }) {
+export function Fills({
+  rows,
+  trader,
+}: {
+  rows: StoredTrade[];
+  trader: string;
+}) {
   return (
     <section className="pad grow">
       <table>
@@ -63,17 +70,18 @@ export function Fills({ rows }: { rows: StoredTrade[] }) {
         </thead>
         <tbody>
           {rows.length ? (
-            rows.map((row) => (
-              <tr key={row.id}>
-                <td>{row.height}</td>
-                <td className={row.side === "buy" ? "bid" : "ask"}>
-                  {row.side}
-                </td>
-                <td>{usd(row.price)}</td>
-                <td>{fmt(row.size)}</td>
-                <td>{row.liquidation ? "yes" : ""}</td>
-              </tr>
-            ))
+            rows.map((row) => {
+              const side = fillSide(row, trader);
+              return (
+                <tr key={row.id}>
+                  <td>{row.height}</td>
+                  <td className={side === "buy" ? "bid" : "ask"}>{side}</td>
+                  <td>{usd(row.price)}</td>
+                  <td>{fmt(row.size)}</td>
+                  <td>{row.liquidation ? "yes" : ""}</td>
+                </tr>
+              );
+            })
           ) : (
             <tr>
               <td className="l" colSpan={5}>

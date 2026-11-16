@@ -277,3 +277,11 @@ export function closeOrder(
   if (price == null) return null;
   return { side, size: size > 0n ? size : -size, price };
 }
+
+export function fillSide(
+  fill: { taker: string; maker: string; side: "buy" | "sell" },
+  trader: string,
+): "buy" | "sell" {
+  if (fill.taker === trader) return fill.side;
+  return fill.side === "buy" ? "sell" : "buy";
+}
