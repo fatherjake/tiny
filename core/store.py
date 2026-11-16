@@ -186,7 +186,9 @@ class Store(Protocol):
         block: Block,
         events: Sequence[Fill | OrderEvent | FundingEvent],
         qc: QC | None = None,
-    ) -> None: ...
+    ) -> list[int]:
+        """Persist the block and its events. Returns the new fill ids, in event order."""
+        ...
 
     def committed_blocks(self, from_height: int = 1) -> tuple[Block, ...]: ...
 
@@ -237,12 +239,12 @@ class MemoryStore:
         block: Block,
         events: Sequence[Fill | OrderEvent | FundingEvent],
         qc: QC | None = None,
-    ) -> None:
+    ) -> list[int]:
         with self._lock:
             self._blocks.append(block)
             if qc is not None:
                 self._tip = qc
-            self._apply(events)
+            return self._apply(events)
 
     def committed_blocks(self, from_height: int = 1) -> tuple[Block, ...]:
         with self._lock:
@@ -320,10 +322,12 @@ class MemoryStore:
         self._funding = []
         self._next_fill = 1
 
-    def _apply(self, events: Sequence[Fill | OrderEvent | FundingEvent]) -> None:
+    def _apply(self, events: Sequence[Fill | OrderEvent | FundingEvent]) -> list[int]:
+        ids: list[int] = []
         for event in events:
             if isinstance(event, Fill):
                 self._fills.append(_fill_row(event, self._next_fill))
+                ids.append(self._next_fill)
                 self._next_fill += 1
             elif isinstance(event, OrderEvent):
                 _insert_order(self._orders, event)
@@ -331,6 +335,7 @@ class MemoryStore:
                 self._funding.append(_funding_row(event))
             else:
                 raise TypeError(f"unknown event {type(event).__name__}")
+        return ids
 
 
 _SCHEMA = """
@@ -451,7 +456,7 @@ class SqliteStore:
         block: Block,
         events: Sequence[Fill | OrderEvent | FundingEvent],
         qc: QC | None = None,
-    ) -> None:
+    ) -> list[int]:
         with self._lock:
             self._db.execute("BEGIN IMMEDIATE")
             try:
@@ -467,11 +472,12 @@ class SqliteStore:
                         """,
                         (encode(qc),),
                     )
-                self._write_events(events)
+                ids = self._write_events(events)
                 self._db.execute("COMMIT")
             except Exception:
                 self._db.execute("ROLLBACK")
                 raise
+            return ids
 
     def committed_blocks(self, from_height: int = 1) -> tuple[Block, ...]:
         with self._lock:
@@ -583,10 +589,11 @@ class SqliteStore:
                 self._db.execute("ROLLBACK")
                 raise
 
-    def _write_events(self, events: Sequence[Fill | OrderEvent | FundingEvent]) -> None:
+    def _write_events(self, events: Sequence[Fill | OrderEvent | FundingEvent]) -> list[int]:
+        ids: list[int] = []
         for event in events:
             if isinstance(event, Fill):
-                self._db.execute(
+                cursor = self._db.execute(
                     """
                     INSERT INTO fills (
                         height, tx_index, market, price, size, taker, maker, side, liquidation, ts
@@ -605,6 +612,7 @@ class SqliteStore:
                         event.ts,
                     ),
                 )
+                ids.append(int(cursor.lastrowid or 0))
             elif isinstance(event, OrderEvent):
                 self._db.execute(
                     """
@@ -640,6 +648,7 @@ class SqliteStore:
                 )
             else:
                 raise TypeError(f"unknown event {type(event).__name__}")
+        return ids
 
     def _fills(
         self, where: str, args: tuple[object, ...], limit: int, before: Cursor | None
