@@ -6,6 +6,7 @@ import { advance, START } from "../lib/gaps";
 import {
   booksQuery,
   candlesQuery,
+  feedQuery,
   fundingQuery,
   marketKeys,
   marketsQuery,
@@ -25,11 +26,11 @@ const NONE: never[] = [];
 export function useMarketData() {
   const client = useQueryClient();
   const [selected, setSelected] = useState("");
-  const [feed, setFeed] = useState<BlockMsg[]>([]);
   const [landed, setLanded] = useState(0);
   const lastLanded = useRef(0);
   const cursor = useRef(START);
 
+  const feed = useQuery(feedQuery).data;
   const status = useQuery(statusQuery).data ?? null;
   const markets = useQuery(marketsQuery).data;
   const books = useQuery(booksQuery).data ?? NO_BOOKS;
@@ -53,7 +54,9 @@ export function useMarketData() {
         lastLanded.current = Date.now();
         setLanded((value) => value + 1);
       }
-      setFeed((rows) => [msg, ...rows].slice(0, FEED_LIMIT));
+      client.setQueryData<BlockMsg[]>(feedQuery.queryKey, (rows = []) =>
+        [msg, ...rows].slice(0, FEED_LIMIT),
+      );
       client.setQueryData<Status>(marketKeys.status, (prev) => ({
         ...prev,
         height: msg.height,
