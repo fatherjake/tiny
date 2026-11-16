@@ -80,41 +80,56 @@ def build(
             for i in range(n)
         ]
     funded = [demo_key(i) for i in range(traders)]
-    with stage(f"funding {traders} traders"):
-        credit_accounts(nodes, funded, MOCK_COLLATERAL)
-    if db:
-        store = nodes[0].store
-        snap = store.latest_snapshot()
-        start = snap.height if snap is not None else 1
-        with stage(f"reading saved blocks from {db} from height {start}"):
-            saved = store.committed_blocks(start)
-        state = snapshot_state(snap, saved[0]) if snap is not None and saved else None
-        if snap is not None and state is None:
-            log.warning("snapshot at height %d does not match its block, replaying all", start)
-            with stage(f"reading all saved blocks from {db}"):
-                saved = store.committed_blocks()
-        tip = store.tip_qc()
-        if saved and tip is not None and tip.block_hash == saved[-1].hash:
-            check_clock(saved[-1])  # before the replay, which can take a while
-            # Every node would replay to the same state, so replay once and copy it.
-            replay = len(saved) - (1 if state is not None else 0)
-            with stage(f"replaying {replay} blocks"):
-                nodes[0].resume(saved, tip, state)
-            if state is not None:
-                for node in nodes:
-                    node.latest_snapshot = snap
-            with stage(f"copying state to {n - 1} other nodes"):
-                for node in nodes[1:]:
-                    copy = State.from_bytes(nodes[0].state.to_bytes())
-                    node.resume(saved, tip, copy)
-            log.info("resumed at height %d", nodes[0].state.height)
-        elif saved:
-            log.warning("%d saved blocks have no matching tip QC, not resuming", len(saved))
-        else:
-            log.info("no saved blocks, starting from genesis")
+    try:
+        with stage(f"funding {traders} traders"):
+            credit_accounts(nodes, funded, MOCK_COLLATERAL)
+        if db:
+            restore(nodes, db)
+    except BaseException:
+        close_db(nodes)
+        raise
     for node in nodes:
         node.start()
     return net, nodes, funded
+
+
+def restore(nodes: list[Node], db: str) -> None:
+    """Load node 0's saved snapshot and replay the blocks after it on every node."""
+    n = len(nodes)
+    store = nodes[0].store
+    snap = store.latest_snapshot()
+    start = snap.height if snap is not None else 1
+    with stage(f"reading saved blocks from {db} from height {start}"):
+        saved = store.committed_blocks(start)
+    state = snapshot_state(snap, saved[0]) if snap is not None and saved else None
+    if snap is not None and state is None:
+        log.warning("snapshot at height %d does not match its block, replaying all", start)
+        with stage(f"reading all saved blocks from {db}"):
+            saved = store.committed_blocks()
+    tip = store.tip_qc()
+    if saved and tip is not None and tip.block_hash == saved[-1].hash:
+        check_clock(saved[-1])  # before the replay, which can take a while
+        # Every node would replay to the same state, so replay once and copy it.
+        replay = len(saved) - (1 if state is not None else 0)
+        with stage(f"replaying {replay} blocks"):
+            nodes[0].resume(saved, tip, state)
+        if state is not None:
+            for node in nodes:
+                node.latest_snapshot = snap
+        with stage(f"copying state to {n - 1} other nodes"):
+            for node in nodes[1:]:
+                copy = State.from_bytes(nodes[0].state.to_bytes())
+                node.resume(saved, tip, copy)
+        log.info("resumed at height %d", nodes[0].state.height)
+    elif saved:
+        log.warning("%d saved blocks have no matching tip QC, not resuming", len(saved))
+    else:
+        log.info("no saved blocks, starting from genesis")
+
+
+def close_db(nodes: list[Node]) -> None:
+    if isinstance(nodes[0].store, SqliteStore):
+        nodes[0].store.close()
 
 
 def drive(
@@ -167,8 +182,7 @@ def shutdown(nodes: list[Node], stop: threading.Event, lock: threading.RLock) ->
     with lock:
         for node in nodes:
             node.stop()
-        if isinstance(nodes[0].store, SqliteStore):
-            nodes[0].store.close()
+        close_db(nodes)
 
 
 def main() -> None:
@@ -182,20 +196,42 @@ def main() -> None:
     parser.add_argument("--db", default="sim.sqlite", help="sqlite file for node 0's block log")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    net, nodes, funded = build(
-        args.validators,
-        (args.delay_ms[0], args.delay_ms[1]),
-        args.drop,
-        seed=0,
-        traders=args.bots,
-        db=args.db or None,
-    )
+    try:
+        net, nodes, funded = build(
+            args.validators,
+            (args.delay_ms[0], args.delay_ms[1]),
+            args.drop,
+            seed=0,
+            traders=args.bots,
+            db=args.db or None,
+        )
+    except KeyboardInterrupt:
+        log.info("interrupted during startup, db closed")
+        return
+    stop = threading.Event()
+    lock = threading.RLock()
+    try:
+        serve(args, net, nodes, funded, stop, lock)
+    except KeyboardInterrupt:
+        pass  # Ctrl-C before the server started, or uvicorn re-raising the one it handled.
+    finally:
+        shutdown(nodes, stop, lock)
+    log.info("stopped")
+
+
+def serve(
+    args: argparse.Namespace,
+    net: MemoryNetwork,
+    nodes: list[Node],
+    funded: list[bytes],
+    stop: threading.Event,
+    lock: threading.RLock,
+) -> None:
     wall_clock(nodes)
     for node_id in args.kill:
         net.kill(node_id)
     # The API thread submits while the pump thread applies blocks. One lock, re-entered
     # when a commit on node 0 signs the next oracle price.
-    lock = threading.RLock()
     raw_submit = nodes[0].submit
 
     def submit(tx: Tx) -> bool:
@@ -207,12 +243,8 @@ def main() -> None:
     for key in funded:
         log.info("funded %s", public_key(key).hex())
         log.info("  private key %s", key.hex())
-    stop = threading.Event()
     threading.Thread(target=drive, args=(net, nodes, bots, stop, lock), daemon=True).start()
-    try:
-        uvicorn.run(create_app(nodes[0]), host="127.0.0.1", port=args.api_port, log_level="info")
-    finally:
-        shutdown(nodes, stop, lock)
+    uvicorn.run(create_app(nodes[0]), host="127.0.0.1", port=args.api_port, log_level="info")
 
 
 if __name__ == "__main__":

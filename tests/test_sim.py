@@ -245,3 +245,23 @@ def test_shutdown_folds_the_wal_into_the_db_and_keeps_every_block(tmp_path) -> N
     saved = sqlite3.connect(db)
     assert saved.execute("SELECT MAX(height) FROM blocks").fetchone()[0] == height
     saved.close()
+
+
+def test_ctrl_c_during_the_replay_closes_the_db(tmp_path, monkeypatch) -> None:
+    db = str(tmp_path / "sim.sqlite")
+    net, nodes, _funded = build(4, (0, 0), 0.0, seed=0, traders=0, db=db)
+    wall_clock(nodes)
+    net.run_for(1_000)
+    height = nodes[0].state.height
+    shutdown(nodes, threading.Event(), threading.RLock())
+
+    def interrupted(*_args: object) -> None:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(Node, "resume", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        build(4, (0, 0), 0.0, seed=0, traders=0, db=db)
+    assert [os.path.exists(db + "-wal"), os.path.exists(db + "-shm")] == [False, False]
+    saved = sqlite3.connect(db)
+    assert saved.execute("SELECT MAX(height) FROM blocks").fetchone()[0] == height
+    saved.close()
