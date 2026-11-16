@@ -1,8 +1,8 @@
 """
-    TCP Transport
+TCP Transport
 
-    node-to-node transport: it keeps a TCP connection open to every peer on the asyncio loop, redialling any that drop. 
-    Note: There's no encryption or peer authentication; the node only trusts what the message signatures prove.
+node-to-node transport: it keeps a TCP connection open to every peer on the asyncio loop, redialling any that drop.
+Note: There's no encryption or peer authentication; the node only trusts what the message signatures prove.
 """
 
 from __future__ import annotations

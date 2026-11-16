@@ -1,9 +1,9 @@
 """
-    Bridge in the style of LayerZero v1
-    An oracle posts source-chain block headers and a separate
-    relayer posts Merkle proofs of messages against them. 
+Bridge in the style of LayerZero v1
+An oracle posts source-chain block headers and a separate
+relayer posts Merkle proofs of messages against them.
 
-    Smart contract piece is in contracts/src/BridgeInbox.sol.
+Smart contract piece is in contracts/src/BridgeInbox.sol.
 """
 
 from __future__ import annotations

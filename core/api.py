@@ -1,18 +1,18 @@
 """
-    HTTP + WebSocket API
+HTTP + WebSocket API
 
-    POST /tx                        -> accept a signed tx into the mempool
-    GET /book/{market}              -> bid and ask depth, with the oracle and mark
-    GET /account/{trader}           -> collateral, positions, value and maintenance margin
-    GET /markets                    -> each market's oracle, mark, fees, funding index and hour-old index
-    GET /trades                     -> recent trades, newest first
-    GET /status                     -> height, view, tip, mempool size and state root
-    GET /trades/{market}            -> paged fills for one market
-    GET /accounts/{addr}/fills      -> paged fills for one account
-    GET /accounts/{addr}/orders     -> open orders, or paged order history
-    GET /candles/{market}           -> open, high, low, close and volume
-    GET /funding/{market}           -> recent funding index and rate
-    WS: /ws                         -> streams new committed blocks, book depth, and trades.
+POST /tx                        -> accept a signed tx into the mempool
+GET /book/{market}              -> bid and ask depth, with the oracle and mark
+GET /account/{trader}           -> collateral, positions, value and maintenance margin
+GET /markets                    -> each market's oracle, mark, fees, funding index and hour-old index
+GET /trades                     -> recent trades, newest first
+GET /status                     -> height, view, tip, mempool size and state root
+GET /trades/{market}            -> paged fills for one market
+GET /accounts/{addr}/fills      -> paged fills for one account
+GET /accounts/{addr}/orders     -> open orders, or paged order history
+GET /candles/{market}           -> open, high, low, close and volume
+GET /funding/{market}           -> recent funding index and rate
+WS: /ws                         -> streams new committed blocks, book depth, and trades.
 """
 
 from __future__ import annotations
