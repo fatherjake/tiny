@@ -114,7 +114,7 @@ export function Chart({ market, trader, picked }: Props) {
         lineStyle: LineStyle.Dashed,
         axisLabelVisible: true,
       });
-    const made: IPriceLine[] = [line(lines.entry, "entry", "#000")];
+    const made: IPriceLine[] = [line(lines.entry, "entry", "#d9d9d9")];
     if (lines.liquidation != null) {
       made.push(line(lines.liquidation, "liq.", "#c62828"));
     }
