@@ -1,5 +1,7 @@
 import logging
+import os
 import sqlite3
+import threading
 import time
 
 import pytest
@@ -7,7 +9,7 @@ import pytest
 from core.node import Node, public_key
 from core.store import with_progress
 from core.types import USDC_SCALE
-from sim.__main__ import MARKET, build, wall_clock
+from sim.__main__ import MARKET, build, shutdown, wall_clock
 from sim.bots import Bot
 
 BALANCE = 1_000_000 * USDC_SCALE
@@ -229,3 +231,17 @@ def test_restart_refuses_a_1970_db_before_replaying_it(tmp_path, monkeypatch) ->
     monkeypatch.setattr(Node, "resume", replay)
     with pytest.raises(RuntimeError, match="1970"):
         build(4, (0, 0), 0.0, seed=0, traders=0, db=db)
+
+
+def test_shutdown_folds_the_wal_into_the_db_and_keeps_every_block(tmp_path) -> None:
+    db = str(tmp_path / "sim.sqlite")
+    net, nodes, _funded = build(4, (0, 0), 0.0, seed=0, traders=0, db=db)
+    wall_clock(nodes)
+    net.run_for(1_000)
+    height = nodes[0].state.height
+    assert [os.path.exists(db + "-wal"), height > 0] == [True, True]
+    shutdown(nodes, threading.Event(), threading.RLock())
+    assert [os.path.exists(db + "-wal"), os.path.exists(db + "-shm")] == [False, False]
+    saved = sqlite3.connect(db)
+    assert saved.execute("SELECT MAX(height) FROM blocks").fetchone()[0] == height
+    saved.close()
