@@ -1,4 +1,5 @@
 import logging
+import sqlite3
 import time
 
 import pytest
@@ -121,12 +122,86 @@ def test_restart_logs_each_startup_stage(tmp_path, caplog) -> None:
         _net2, nodes2, _funded = build(4, (0, 0), 0.0, seed=0, traders=0, db=db)
         nodes2[0].store.close()
     for expected in (
-        f"reading saved blocks from {db}...",
+        f"reading saved blocks from {db} from height 1...",
         f"replaying {height} blocks...",
         "copying state to 3 other nodes...",
         f"resumed at height {height}",
     ):
         assert expected in caplog.messages
+
+
+def _run_and_restart(db: str) -> tuple[int, list[Node]]:
+    net, nodes, _funded = build(4, (0, 0), 0.0, seed=0, traders=1, db=db)
+    wall_clock(nodes)
+    net.run_for(1_000)
+    height = nodes[0].state.height
+    nodes[0].store.close()
+    net2, nodes2, _funded = build(4, (0, 0), 0.0, seed=0, traders=1, db=db)
+    net2.run_for(500)
+    nodes2[0].store.close()
+    return height, nodes2
+
+
+def test_restart_replays_only_the_blocks_after_the_last_snapshot(
+    tmp_path, caplog, monkeypatch
+) -> None:
+    monkeypatch.setattr("core.node.SNAPSHOT_EVERY", 5)
+    db = str(tmp_path / "sim.sqlite")
+    with caplog.at_level(logging.INFO):
+        height, nodes = _run_and_restart(db)
+    snapped = height - height % 5
+    assert height > 5
+    assert f"reading saved blocks from {db} from height {snapped}..." in caplog.messages
+    assert f"replaying {height - snapped} blocks..." in caplog.messages
+    assert f"resumed at height {height}" in caplog.messages
+    assert [node.state.height > height for node in nodes] == [True, True, True, True]
+    assert len({node.state.state_root() for node in nodes}) == 1
+
+
+def test_restart_from_a_snapshot_matches_a_full_replay(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr("core.node.SNAPSHOT_EVERY", 5)
+    db = str(tmp_path / "sim.sqlite")
+    net, nodes, _funded = build(4, (0, 0), 0.0, seed=0, traders=1, db=db)
+    wall_clock(nodes)
+    net.run_for(1_000)
+    root = nodes[0].state.state_root()
+    nodes[0].store.close()
+    _net, from_snapshot, _funded = build(4, (0, 0), 0.0, seed=0, traders=1, db=db)
+    from_snapshot[0].store.close()
+    db_full = sqlite3.connect(db)
+    db_full.execute("DELETE FROM snapshot")
+    db_full.commit()
+    db_full.close()
+    _net, from_genesis, _funded = build(4, (0, 0), 0.0, seed=0, traders=1, db=db)
+    from_genesis[0].store.close()
+    assert from_snapshot[0].state.state_root() == root
+    assert from_genesis[0].state.state_root() == root
+
+
+def test_a_snapshot_that_does_not_match_its_block_falls_back_to_a_full_replay(
+    tmp_path, caplog, monkeypatch
+) -> None:
+    monkeypatch.setattr("core.node.SNAPSHOT_EVERY", 5)
+    db = str(tmp_path / "sim.sqlite")
+    net, nodes, _funded = build(4, (0, 0), 0.0, seed=0, traders=1, db=db)
+    wall_clock(nodes)
+    net.run_for(1_000)
+    height, root = nodes[0].state.height, nodes[0].state.state_root()
+    nodes[0].store.close()
+    tamper = sqlite3.connect(db)
+    snap_height, body = tamper.execute("SELECT height, state FROM snapshot").fetchone()
+    tamper.execute("UPDATE snapshot SET state = ?", (bytes(body).replace(b"1", b"2", 1),))
+    tamper.commit()
+    tamper.close()
+    with caplog.at_level(logging.INFO):
+        _net, again, _funded = build(4, (0, 0), 0.0, seed=0, traders=1, db=db)
+    again[0].store.close()
+    assert (
+        f"snapshot at height {snap_height} does not match its block, replaying all"
+        in caplog.messages
+    )
+    assert f"replaying {height} blocks..." in caplog.messages
+    assert again[0].state.state_root() == root
 
 
 def test_a_slow_loop_logs_how_far_it_has_got(caplog) -> None:

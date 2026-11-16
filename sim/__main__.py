@@ -21,7 +21,7 @@ from contextlib import contextmanager
 import uvicorn
 
 from core.api import create_app
-from core.node import Node, public_key
+from core.node import Node, public_key, snapshot_state
 from core.state import State
 from core.store import SqliteStore
 from core.types import PRICE_SCALE, USDC_SCALE, Block, Market, Tx
@@ -83,14 +83,26 @@ def build(
     with stage(f"funding {traders} traders"):
         credit_accounts(nodes, funded, MOCK_COLLATERAL)
     if db:
-        with stage(f"reading saved blocks from {db}"):
-            saved = nodes[0].store.committed_blocks()
-        tip = nodes[0].store.tip_qc()
+        store = nodes[0].store
+        snap = store.latest_snapshot()
+        start = snap.height if snap is not None else 1
+        with stage(f"reading saved blocks from {db} from height {start}"):
+            saved = store.committed_blocks(start)
+        state = snapshot_state(snap, saved[0]) if snap is not None and saved else None
+        if snap is not None and state is None:
+            log.warning("snapshot at height %d does not match its block, replaying all", start)
+            with stage(f"reading all saved blocks from {db}"):
+                saved = store.committed_blocks()
+        tip = store.tip_qc()
         if saved and tip is not None and tip.block_hash == saved[-1].hash:
             check_clock(saved[-1])  # before the replay, which can take a while
             # Every node would replay to the same state, so replay once and copy it.
-            with stage(f"replaying {len(saved)} blocks"):
-                nodes[0].resume(saved, tip)
+            replay = len(saved) - (1 if state is not None else 0)
+            with stage(f"replaying {replay} blocks"):
+                nodes[0].resume(saved, tip, state)
+            if state is not None:
+                for node in nodes:
+                    node.latest_snapshot = snap
             with stage(f"copying state to {n - 1} other nodes"):
                 for node in nodes[1:]:
                     copy = State.from_bytes(nodes[0].state.to_bytes())
