@@ -1,6 +1,5 @@
 import type {
   AccountView,
-  MarketInfo,
   OpenOrder,
   Position,
   StoredOrder,
@@ -17,7 +16,6 @@ type Props = {
   tab: DockTab;
   setTab: (tab: DockTab) => void;
   account: AccountView | null;
-  markets: MarketInfo[];
   orders: OpenOrder[];
   onCancel: (order: OpenOrder) => void;
   onClose: (pos: Position) => void;
@@ -31,7 +29,6 @@ export function Dock({
   tab,
   setTab,
   account,
-  markets,
   orders,
   onCancel,
   onClose,
@@ -65,7 +62,7 @@ export function Dock({
         ))}
       </div>
       <div className="pane">
-        {pane(tab, account, markets, orders, onCancel, onClose, fills, history)}
+        {pane(tab, account, orders, onCancel, onClose, fills, history)}
       </div>
     </section>
   );
@@ -74,7 +71,6 @@ export function Dock({
 function pane(
   tab: DockTab,
   account: AccountView | null,
-  markets: MarketInfo[],
   orders: OpenOrder[],
   onCancel: (order: OpenOrder) => void,
   onClose: (pos: Position) => void,
@@ -83,7 +79,7 @@ function pane(
 ) {
   switch (tab) {
     case "positions":
-      return <Account account={account} markets={markets} onClose={onClose} />;
+      return <Account account={account} onClose={onClose} />;
     case "orders":
       return <OpenOrders orders={orders} onCancel={onCancel} />;
     case "fills":

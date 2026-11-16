@@ -1,13 +1,13 @@
 import { useState } from "react";
 
-import type {
-  BlockMsg,
-  Depth,
-  FundingRow,
-  MarketInfo,
-  Scaled,
-  Trade,
-} from "../types";
+import {
+  useBook,
+  useFeed,
+  useFunding,
+  useMarkets,
+  useTrades,
+} from "../hooks/useMarket";
+import type { Scaled, Trade } from "../types";
 import { Book } from "./Book";
 import { Feed } from "./Feed";
 import { Funding } from "./History";
@@ -15,11 +15,6 @@ import { Tape } from "./Tape";
 
 type Props = {
   market: string;
-  book: Depth | null;
-  prints: Trade[];
-  funding: FundingRow[];
-  markets: MarketInfo[];
-  blocks: BlockMsg[];
   onPrice: (price: Scaled) => void;
 };
 
@@ -30,17 +25,27 @@ const TABS = [
   ["blocks", "Blocks"],
 ] as const;
 
-export function Ladder({
-  market,
-  book,
-  prints,
-  funding,
-  markets,
-  blocks,
-  onPrice,
-}: Props) {
+const PRINTS = 40;
+const latest = (rows: Trade[]) => rows.slice(0, PRINTS);
+
+function BookTab({ market, onPrice }: Props) {
+  return <Book book={useBook(market)} onPrice={onPrice} />;
+}
+
+function TradesTab({ market }: { market: string }) {
+  return <Tape prints={useTrades(market, latest) ?? []} tint />;
+}
+
+function FundingTab({ market }: { market: string }) {
+  return <Funding rows={useFunding(market)} markets={useMarkets()} />;
+}
+
+function BlocksTab() {
+  return <Feed blocks={useFeed()} />;
+}
+
+export function Ladder({ market, onPrice }: Props) {
   const [tab, setTab] = useState<(typeof TABS)[number][0]>("book");
-  const mine = prints.filter((print) => print.market === market);
   return (
     <section className="depth">
       <div className="tabs">
@@ -55,10 +60,10 @@ export function Ladder({
           </button>
         ))}
       </div>
-      {tab === "book" ? <Book book={book} onPrice={onPrice} /> : null}
-      {tab === "trades" ? <Tape prints={mine} tint /> : null}
-      {tab === "funding" ? <Funding rows={funding} markets={markets} /> : null}
-      {tab === "blocks" ? <Feed blocks={blocks} /> : null}
+      {tab === "book" ? <BookTab market={market} onPrice={onPrice} /> : null}
+      {tab === "trades" ? <TradesTab market={market} /> : null}
+      {tab === "funding" ? <FundingTab market={market} /> : null}
+      {tab === "blocks" ? <BlocksTab /> : null}
     </section>
   );
 }

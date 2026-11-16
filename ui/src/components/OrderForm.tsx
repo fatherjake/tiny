@@ -1,21 +1,14 @@
-import type { FormEvent } from "react";
+import { type FormEvent, useEffect, useRef } from "react";
 
-import { bpsPct, previewOrder } from "../lib/orders";
+import { useBook, useMarket, useMarkets } from "../hooks/useMarket";
+import { bpsPct, currentPrice, previewOrder } from "../lib/orders";
 import { unscale, usd } from "../lib/scale";
-import type {
-  AccountView,
-  Depth,
-  MarketInfo,
-  OpenOrder,
-  OrderDraft,
-} from "../types";
+import type { AccountView, OpenOrder, OrderDraft } from "../types";
 
 type Props = {
   form: OrderDraft;
   patch: (part: Partial<OrderDraft>) => void;
-  market: MarketInfo | null;
-  markets: MarketInfo[];
-  book: Depth | null;
+  selected: string;
   account: AccountView | null;
   orders: OpenOrder[];
   nonce: number;
@@ -29,9 +22,7 @@ type Props = {
 export function OrderForm({
   form,
   patch,
-  market,
-  markets,
-  book,
+  selected,
   account,
   orders,
   nonce,
@@ -41,6 +32,17 @@ export function OrderForm({
   bad,
   onSubmit,
 }: Props) {
+  const market = useMarket(selected);
+  const markets = useMarkets();
+  const book = useBook(selected);
+  const pricedFor = useRef("");
+  const prefill = currentPrice(market);
+  // Start the price at the market's current price, once per market.
+  useEffect(() => {
+    if (prefill == null || pricedFor.current === selected) return;
+    pricedFor.current = selected;
+    patch({ price: unscale(prefill) });
+  }, [selected, prefill, patch]);
   const base = market?.name.split("-")[0] ?? "";
   const preview = previewOrder(form, market, markets, book, account, orders);
 

@@ -1,6 +1,8 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 
 import { TxError, signAndPost } from "../lib/api";
+import { marketKeys } from "../lib/marketQueries";
 import { closeOrder, outcome } from "../lib/orders";
 import type {
   AccountView,
@@ -19,9 +21,9 @@ export function useOrderActions(
   key: TraderKey | null,
   account: AccountView | null,
   history: StoredOrder[],
-  books: Record<string, Depth>,
   refreshAccount: () => Promise<AccountView | null>,
 ) {
+  const client = useQueryClient();
   const [pending, setPending] = useState(false);
   const [note, setNote] = useState("");
   const [bad, setBad] = useState(false);
@@ -103,7 +105,9 @@ export function useOrderActions(
     }
   }
   async function close(pos: Position) {
-    const order = closeOrder(pos, books[pos.market] ?? null);
+    // Read at click time, so placing orders does not subscribe to every book frame.
+    const books = client.getQueryData<Record<string, Depth>>(marketKeys.books);
+    const order = closeOrder(pos, books?.[pos.market] ?? null);
     if (!order) {
       setBad(true);
       setNote("no quote to close " + pos.market + " against");

@@ -1,17 +1,17 @@
-import { type CSSProperties, useEffect, useRef, useState } from "react";
+import { type CSSProperties, useCallback, useState } from "react";
 import { Chart } from "./components/Chart";
 import { Dock, type DockTab } from "./components/Dock";
 import { Header } from "./components/Header";
 import { Ladder } from "./components/Ladder";
 import { OrderForm } from "./components/OrderForm";
 import { Wallet } from "./components/Wallet";
-import { useMarketData } from "./hooks/useMarketData";
+import { useMarketsSelect } from "./hooks/useMarket";
+import { useMarketStream } from "./hooks/useMarketStream";
 import { useOrderActions } from "./hooks/useOrderActions";
 import { useTraderSession } from "./hooks/useTraderSession";
 import { useTradingAccount } from "./hooks/useTradingAccount";
-import { currentPrice } from "./lib/orders";
 import { unscale } from "./lib/scale";
-import type { OrderDraft } from "./types";
+import type { MarketInfo, OrderDraft, Scaled } from "./types";
 
 const DOCK_KEY = "tiny.dock";
 function savedDock(): number {
@@ -23,15 +23,25 @@ function savedDock(): number {
   }
 }
 
+const firstName = (markets: MarketInfo[]) => markets[0]?.name ?? "";
+
+// The root holds only what changes rarely. Components read market data from
+// the query cache themselves, so socket frames do not re-render the whole app.
 export function App() {
-  const data = useMarketData();
+  const stream = useMarketStream();
+  const [chosen, setChosen] = useState("");
+  const first = useMarketsSelect(firstName) ?? "";
+  const selected = chosen || first;
+  const leverage =
+    useMarketsSelect(
+      (markets) => markets.find((m) => m.name === selected)?.max_leverage,
+    ) ?? null;
   const trader = useTraderSession();
-  const account = useTradingAccount(trader.key, data.landed);
+  const account = useTradingAccount(trader.key, stream.landed);
   const actions = useOrderActions(
     trader.key,
     account.account,
     account.history,
-    data.books,
     account.refreshAccount,
   );
   const [tab, setTab] = useState<DockTab>("positions");
@@ -43,45 +53,25 @@ export function App() {
     price: "",
     reduceOnly: false,
   });
-  const pricedFor = useRef("");
-  const market =
-    data.markets.find((item) => item.name === data.selected) ?? null;
-  const book = data.books[data.selected] ?? null;
-  const patch = (part: Partial<OrderDraft>) =>
-    setForm((prev) => ({ ...prev, ...part }));
-  const prefill = currentPrice(market);
-  useEffect(() => {
-    if (prefill == null || pricedFor.current === data.selected) return;
-    pricedFor.current = data.selected;
-    patch({ price: unscale(prefill) });
-  }, [data.selected, prefill]);
+  const patch = useCallback(
+    (part: Partial<OrderDraft>) => setForm((prev) => ({ ...prev, ...part })),
+    [],
+  );
+  const onPrice = useCallback(
+    (price: Scaled) => patch({ price: unscale(price), type: "limit" }),
+    [patch],
+  );
   return (
     <div className="app" style={{ "--dock": dock + "px" } as CSSProperties}>
-      <Header
-        status={data.status}
-        ws={data.ws}
-        market={market}
-        markets={data.markets}
-        selected={data.selected}
-        onSelect={data.setSelected}
-        last={data.prints[0]}
-      />
-      <Chart market={data.selected} points={data.series} />
-      <Ladder
-        market={data.selected}
-        book={book}
-        prints={data.prints}
-        funding={data.funding}
-        markets={data.markets}
-        blocks={data.feed}
-        onPrice={(price) => patch({ price: unscale(price), type: "limit" })}
-      />
+      <Header ws={stream.ws} selected={selected} onSelect={setChosen} />
+      <Chart market={selected} />
+      <Ladder market={selected} onPrice={onPrice} />
       <section className="side">
         <Wallet
           wallet={trader.wallet}
           trader={trader.key?.trader ?? ""}
           account={account.account}
-          leverage={market?.max_leverage ?? null}
+          leverage={leverage}
           error={trader.error}
           canSign={trader.canSign}
           signing={trader.signing}
@@ -90,9 +80,7 @@ export function App() {
         <OrderForm
           form={form}
           patch={patch}
-          market={market}
-          markets={data.markets}
-          book={book}
+          selected={selected}
           account={account.account}
           orders={account.orders}
           nonce={actions.nonce}
@@ -102,7 +90,7 @@ export function App() {
           bad={actions.bad}
           onSubmit={(size, price) =>
             void actions.send({
-              market: data.selected,
+              market: selected,
               side: form.side,
               type: form.type,
               price,
@@ -116,7 +104,6 @@ export function App() {
         tab={tab}
         setTab={setTab}
         account={account.account}
-        markets={data.markets}
         orders={account.orders}
         onCancel={(order) => void actions.cancel(order)}
         onClose={(pos) => void actions.close(pos)}

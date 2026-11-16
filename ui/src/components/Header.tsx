@@ -1,15 +1,20 @@
+import {
+  useMarket,
+  useMarketsSelect,
+  useStatus,
+  useTrades,
+} from "../hooks/useMarket";
 import { bi, pct, short, usd } from "../lib/scale";
-import type { MarketInfo, Status, Trade } from "../types";
+import type { MarketInfo, Trade } from "../types";
 
 type Props = {
-  status: Status | null;
   ws: string;
-  market: MarketInfo | null;
-  markets: MarketInfo[];
   selected: string;
   onSelect: (name: string) => void;
-  last: Trade | undefined;
 };
+
+const names = (markets: MarketInfo[]) => markets.map((item) => item.name);
+const first = (trades: Trade[]) => trades[0];
 
 const YEAR_MS = 365n * 24n * 3_600_000n;
 
@@ -30,15 +35,11 @@ function annual(market: MarketInfo | null): string {
   return pct(paid * YEAR_MS, bi(market.oracle_price) * elapsed);
 }
 
-export function Header({
-  status,
-  ws,
-  market,
-  markets,
-  selected,
-  onSelect,
-  last,
-}: Props) {
+export function Header({ ws, selected, onSelect }: Props) {
+  const status = useStatus();
+  const market = useMarket(selected);
+  const markets = useMarketsSelect(names) ?? [];
+  const last = useTrades(selected, first);
   return (
     <header>
       <div className="quote">
@@ -47,9 +48,9 @@ export function Header({
           onChange={(event) => onSelect(event.target.value)}
         >
           {markets.length ? (
-            markets.map((item) => (
-              <option key={item.name} value={item.name}>
-                {item.name}
+            markets.map((name) => (
+              <option key={name} value={name}>
+                {name}
               </option>
             ))
           ) : (

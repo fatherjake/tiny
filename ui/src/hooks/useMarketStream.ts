@@ -1,43 +1,21 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useRef, useState } from "react";
 
 import { useWebSocket } from "./useWebSocket";
 import { advance, START } from "../lib/gaps";
-import {
-  booksQuery,
-  candlesQuery,
-  feedQuery,
-  fundingQuery,
-  marketKeys,
-  marketsQuery,
-  statusQuery,
-  TICK_TRADES,
-  tradesQuery,
-} from "../lib/marketQueries";
-import { seed } from "../lib/series";
+import { feedQuery, marketKeys, TICK_TRADES } from "../lib/marketQueries";
 import type { BlockMsg, Depth, Status, Trade } from "../types";
 
 const REFRESH_MS = 250;
 const FEED_LIMIT = 50;
-const PRINTS = 40;
-const NO_BOOKS: Record<string, Depth> = {};
-const NONE: never[] = [];
 
-export function useMarketData() {
+// Call once, at the root. Writes socket frames into the query cache and
+// returns only what changes rarely, so the root does not re-render per frame.
+export function useMarketStream() {
   const client = useQueryClient();
-  const [selected, setSelected] = useState("");
   const [landed, setLanded] = useState(0);
   const lastLanded = useRef(0);
   const cursor = useRef(START);
-
-  const feed = useQuery(feedQuery).data;
-  const status = useQuery(statusQuery).data ?? null;
-  const markets = useQuery(marketsQuery).data;
-  const books = useQuery(booksQuery).data ?? NO_BOOKS;
-  const on = { enabled: selected !== "" };
-  const trades = useQuery({ ...tradesQuery(selected), ...on }).data;
-  const candles = useQuery({ ...candlesQuery(selected), ...on }).data;
-  const funding = useQuery({ ...fundingQuery(selected), ...on }).data ?? NONE;
 
   const ws = useWebSocket("/ws", (msg) => {
     const next = advance(cursor.current, msg);
@@ -81,27 +59,5 @@ export function useMarketData() {
     }
   });
 
-  useEffect(() => {
-    if (!selected && markets?.length) setSelected(markets[0].name);
-  }, [markets, selected]);
-
-  const series = useMemo(
-    () => seed(candles ?? {}, trades ?? []),
-    [candles, trades],
-  );
-  const prints = useMemo(() => (trades ?? []).slice(0, PRINTS), [trades]);
-
-  return {
-    status,
-    markets: markets ?? NONE,
-    books,
-    series,
-    selected,
-    setSelected,
-    feed,
-    prints,
-    funding,
-    landed,
-    ws,
-  };
+  return { ws, landed };
 }
