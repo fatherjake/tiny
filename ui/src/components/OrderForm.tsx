@@ -1,10 +1,24 @@
-import { type FormEvent, useEffect, useRef } from "react";
+import {
+  type FormEvent,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+} from "react";
+import { flushSync } from "react-dom";
 
 import { useAccount, useOpenOrders } from "../hooks/useAccount";
 import { useBook, useMarket, useMarkets } from "../hooks/useMarket";
 import { bpsPct, currentPrice, previewOrder } from "../lib/orders";
 import { unscale, usd } from "../lib/scale";
+import { fieldOf, KEYS, shortcut } from "../lib/shortcuts";
 import type { OrderDraft } from "../types";
+
+const LEGEND_MS = 2_000;
+
+function Key({ show, label }: { show: boolean; label: string }) {
+  return show ? <kbd className="key">{label}</kbd> : null;
+}
 
 type Props = {
   form: OrderDraft;
@@ -43,6 +57,49 @@ export function OrderForm({
     pricedFor.current = selected;
     patch({ price: unscale(prefill) });
   }, [selected, prefill, patch]);
+  const [legend, setLegend] = useState(false);
+  const legendTimer = useRef(0);
+  const priceInput = useRef<HTMLInputElement>(null);
+  const sizeInput = useRef<HTMLInputElement>(null);
+  const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
+    if (event.defaultPrevented) return;
+    const action = shortcut(event, fieldOf(event.target));
+    if (!action) return;
+    event.preventDefault();
+    setLegend(true);
+    window.clearTimeout(legendTimer.current);
+    legendTimer.current = window.setTimeout(() => setLegend(false), LEGEND_MS);
+    switch (action.kind) {
+      case "type":
+        patch({ type: action.type });
+        break;
+      case "side":
+        patch({ side: action.side });
+        break;
+      case "price":
+        flushSync(() => patch({ type: "limit" }));
+        priceInput.current?.select();
+        break;
+      case "size": {
+        flushSync(() => patch({ usd: action.digit }));
+        const input = sizeInput.current;
+        input?.focus();
+        input?.setSelectionRange(action.digit.length, action.digit.length);
+        break;
+      }
+      case "leave":
+        if (event.target instanceof HTMLElement) event.target.blur();
+        break;
+    }
+  });
+  useEffect(() => {
+    const down = (event: KeyboardEvent) => onKeyDown(event);
+    window.addEventListener("keydown", down);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.clearTimeout(legendTimer.current);
+    };
+  }, []);
   const base = market?.name.split("-")[0] ?? "";
   const preview = previewOrder(form, market, markets, book, account, orders);
 
@@ -65,6 +122,7 @@ export function OrderForm({
           className={form.type === "market" ? "on" : ""}
           onClick={() => patch({ type: "market" })}
         >
+          <Key show={legend} label={KEYS.market} />
           market
         </button>
         <button
@@ -72,6 +130,7 @@ export function OrderForm({
           className={form.type === "limit" ? "on" : ""}
           onClick={() => patch({ type: "limit" })}
         >
+          <Key show={legend} label={KEYS.limit} />
           limit
         </button>
       </div>
@@ -81,6 +140,7 @@ export function OrderForm({
           className={form.side === "buy" ? "on" : ""}
           onClick={() => patch({ side: "buy" })}
         >
+          <Key show={legend} label={KEYS.buy} />
           buy / long
         </button>
         <button
@@ -88,6 +148,7 @@ export function OrderForm({
           className={form.side === "sell" ? "on" : ""}
           onClick={() => patch({ side: "sell" })}
         >
+          <Key show={legend} label={KEYS.sell} />
           sell / short
         </button>
       </div>
@@ -104,11 +165,16 @@ export function OrderForm({
       {form.type === "limit" ? (
         <div className="row">
           <span>price (USD)</span>
-          <input
-            className="amount"
-            value={form.price}
-            onInput={(event) => patch({ price: event.currentTarget.value })}
-          />
+          <span className="keyed">
+            <input
+              ref={priceInput}
+              className="amount"
+              inputMode="decimal"
+              value={form.price}
+              onInput={(event) => patch({ price: event.currentTarget.value })}
+            />
+            <Key show={legend} label={KEYS.price} />
+          </span>
           <button
             type="button"
             disabled={preview.mid == null}
@@ -122,11 +188,16 @@ export function OrderForm({
       ) : null}
       <div className="row">
         <span>size (USD)</span>
-        <input
-          className="amount"
-          value={form.usd}
-          onInput={(event) => patch({ usd: event.currentTarget.value })}
-        />
+        <span className="keyed">
+          <input
+            ref={sizeInput}
+            className="amount"
+            inputMode="decimal"
+            value={form.usd}
+            onInput={(event) => patch({ usd: event.currentTarget.value })}
+          />
+          <Key show={legend} label={KEYS.size} />
+        </span>
         <button
           type="button"
           disabled={preview.maxUsd == null || preview.maxUsd === 0n}
@@ -179,6 +250,7 @@ export function OrderForm({
       </div>
       {preview.problem && !preview.short ? <div>{preview.problem}</div> : null}
       <button type="submit" className="dark wide">
+        <Key show={legend} label={KEYS.submit} />
         {pending ? "Sending Order" : "Place Order"}
       </button>
       <div className="muted stamp">
