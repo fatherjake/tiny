@@ -332,3 +332,29 @@ button.dark:disabled {
   transform: translate(-50%, -50%);
   z-index: 3;
 }
+
+.pad button,
+.keyed {
+  position: relative;
+}
+.keyed {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+.key {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: translate(-50%, -50%);
+  z-index: 3;
+  min-width: 13px;
+  height: 13px;
+  padding: 0 2px;
+  background: #000;
+  color: #fff;
+  outline: 1px solid #fff;
+  font: 9px/13px sans-serif;
+  text-align: center;
+  pointer-events: none;
+}
