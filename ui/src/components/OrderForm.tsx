@@ -1,16 +1,16 @@
 import { type FormEvent, useEffect, useRef } from "react";
 
+import { useAccount, useOpenOrders } from "../hooks/useAccount";
 import { useBook, useMarket, useMarkets } from "../hooks/useMarket";
 import { bpsPct, currentPrice, previewOrder } from "../lib/orders";
 import { unscale, usd } from "../lib/scale";
-import type { AccountView, OpenOrder, OrderDraft } from "../types";
+import type { OrderDraft } from "../types";
 
 type Props = {
   form: OrderDraft;
   patch: (part: Partial<OrderDraft>) => void;
   selected: string;
-  account: AccountView | null;
-  orders: OpenOrder[];
+  trader: string;
   nonce: number;
   orderId: number;
   pending: boolean;
@@ -23,8 +23,7 @@ export function OrderForm({
   form,
   patch,
   selected,
-  account,
-  orders,
+  trader,
   nonce,
   orderId,
   pending,
@@ -35,6 +34,8 @@ export function OrderForm({
   const market = useMarket(selected);
   const markets = useMarkets();
   const book = useBook(selected);
+  const account = useAccount(trader);
+  const orders = useOpenOrders(trader);
   const pricedFor = useRef("");
   const prefill = currentPrice(market);
   // Start the price at the market's current price, once per market.

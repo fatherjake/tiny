@@ -9,7 +9,6 @@ import { useMarketsSelect } from "./hooks/useMarket";
 import { useMarketStream } from "./hooks/useMarketStream";
 import { useOrderActions } from "./hooks/useOrderActions";
 import { useTraderSession } from "./hooks/useTraderSession";
-import { useTradingAccount } from "./hooks/useTradingAccount";
 import { unscale } from "./lib/scale";
 import type { MarketInfo, OrderDraft, Scaled } from "./types";
 
@@ -28,7 +27,7 @@ const firstName = (markets: MarketInfo[]) => markets[0]?.name ?? "";
 // The root holds only what changes rarely. Components read market data from
 // the query cache themselves, so socket frames do not re-render the whole app.
 export function App() {
-  const stream = useMarketStream();
+  const ws = useMarketStream();
   const [chosen, setChosen] = useState("");
   const first = useMarketsSelect(firstName) ?? "";
   const selected = chosen || first;
@@ -37,13 +36,8 @@ export function App() {
       (markets) => markets.find((m) => m.name === selected)?.max_leverage,
     ) ?? null;
   const trader = useTraderSession();
-  const account = useTradingAccount(trader.key, stream.landed);
-  const actions = useOrderActions(
-    trader.key,
-    account.account,
-    account.history,
-    account.refreshAccount,
-  );
+  const traderId = trader.key?.trader ?? "";
+  const actions = useOrderActions(trader.key);
   const [tab, setTab] = useState<DockTab>("positions");
   const [dock, setDock] = useState(savedDock);
   const [form, setForm] = useState<OrderDraft>({
@@ -63,14 +57,13 @@ export function App() {
   );
   return (
     <div className="app" style={{ "--dock": dock + "px" } as CSSProperties}>
-      <Header ws={stream.ws} selected={selected} onSelect={setChosen} />
+      <Header ws={ws} selected={selected} onSelect={setChosen} />
       <Chart market={selected} />
       <Ladder market={selected} onPrice={onPrice} />
       <section className="side">
         <Wallet
           wallet={trader.wallet}
-          trader={trader.key?.trader ?? ""}
-          account={account.account}
+          trader={traderId}
           leverage={leverage}
           error={trader.error}
           canSign={trader.canSign}
@@ -81,8 +74,7 @@ export function App() {
           form={form}
           patch={patch}
           selected={selected}
-          account={account.account}
-          orders={account.orders}
+          trader={traderId}
           nonce={actions.nonce}
           orderId={actions.orderId}
           pending={actions.pending}
@@ -103,12 +95,9 @@ export function App() {
       <Dock
         tab={tab}
         setTab={setTab}
-        account={account.account}
-        orders={account.orders}
+        trader={traderId}
         onCancel={(order) => void actions.cancel(order)}
         onClose={(pos) => void actions.close(pos)}
-        fills={account.fills}
-        history={account.history}
         onResize={(height) => {
           const next = Math.round(
             Math.min(Math.max(height, 60), window.innerHeight - 200),

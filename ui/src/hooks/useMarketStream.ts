@@ -1,7 +1,8 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useRef, useState } from "react";
+import { useRef } from "react";
 
 import { useWebSocket } from "./useWebSocket";
+import { accountKeys } from "../lib/accountQueries";
 import { advance, START } from "../lib/gaps";
 import { feedQuery, marketKeys, TICK_TRADES } from "../lib/marketQueries";
 import type { BlockMsg, Depth, Status, Trade } from "../types";
@@ -10,11 +11,10 @@ const REFRESH_MS = 250;
 const FEED_LIMIT = 50;
 
 // Call once, at the root. Writes socket frames into the query cache and
-// returns only what changes rarely, so the root does not re-render per frame.
+// returns only the connection status, so the root does not re-render per frame.
 export function useMarketStream() {
   const client = useQueryClient();
-  const [landed, setLanded] = useState(0);
-  const lastLanded = useRef(0);
+  const lastAccount = useRef(0);
   const cursor = useRef(START);
 
   const ws = useWebSocket("/ws", (msg) => {
@@ -25,12 +25,15 @@ export function useMarketStream() {
         at: msg,
       });
       void client.invalidateQueries({ queryKey: marketKeys.all });
+      void client.invalidateQueries({ queryKey: accountKeys.all });
     }
     cursor.current = next.cursor;
     if (msg.type === "block") {
-      if (Date.now() - lastLanded.current >= REFRESH_MS) {
-        lastLanded.current = Date.now();
-        setLanded((value) => value + 1);
+      // A block can change fills, orders and margin. Blocks come faster than
+      // the account needs, so refetch it at most once per REFRESH_MS.
+      if (Date.now() - lastAccount.current >= REFRESH_MS) {
+        lastAccount.current = Date.now();
+        void client.invalidateQueries({ queryKey: accountKeys.all });
       }
       client.setQueryData<BlockMsg[]>(feedQuery.queryKey, (rows = []) =>
         [msg, ...rows].slice(0, FEED_LIMIT),
@@ -59,5 +62,5 @@ export function useMarketStream() {
     }
   });
 
-  return { ws, landed };
+  return ws;
 }

@@ -1,29 +1,29 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 
+import { useAccountSelect, useOrderHistory } from "./useAccount";
+import { accountQuery } from "../lib/accountQueries";
 import { TxError, signAndPost } from "../lib/api";
 import { marketKeys } from "../lib/marketQueries";
 import { closeOrder, outcome } from "../lib/orders";
-import type {
-  AccountView,
-  Depth,
-  OpenOrder,
-  Position,
-  StoredOrder,
-} from "../types";
+import type { AccountView, Depth, OpenOrder, Position } from "../types";
 import type { TraderKey } from "./useTraderSession";
 
 const firstOrderId = () => Date.now() * 1000;
 const message = (err: unknown) =>
   err instanceof Error ? err.message || String(err) : String(err);
 
-export function useOrderActions(
-  key: TraderKey | null,
-  account: AccountView | null,
-  history: StoredOrder[],
-  refreshAccount: () => Promise<AccountView | null>,
-) {
+const nonceOf = (account: AccountView | null) => account?.nonce ?? 0;
+
+export function useOrderActions(key: TraderKey | null) {
   const client = useQueryClient();
+  const trader = key?.trader ?? "";
+  // Only the nonce, so a mark move that changes the account value does not
+  // re-render whoever holds these actions.
+  const accountNonce = useAccountSelect(trader, nonceOf) ?? 0;
+  const history = useOrderHistory(trader);
+  const refreshAccount = () =>
+    trader ? client.fetchQuery(accountQuery(trader)) : Promise.resolve(null);
   const [pending, setPending] = useState(false);
   const [note, setNote] = useState("");
   const [bad, setBad] = useState(false);
@@ -43,7 +43,7 @@ export function useOrderActions(
     setBad(row.status === "rejected");
     setNote(outcome(row));
   }, [history]);
-  const nonce = Math.max(localNonce.current, account?.nonce ?? 0) + 1;
+  const nonce = Math.max(localNonce.current, accountNonce) + 1;
   async function send(order: {
     market: string;
     side: "buy" | "sell";
@@ -54,7 +54,7 @@ export function useOrderActions(
   }) {
     if (!key || pending) return;
     setPending(true);
-    const sentNonce = Math.max(localNonce.current, account?.nonce ?? 0) + 1;
+    const sentNonce = Math.max(localNonce.current, accountNonce) + 1;
     const id = nextId.current;
     try {
       await signAndPost(
@@ -82,7 +82,7 @@ export function useOrderActions(
   async function cancel(order: OpenOrder) {
     if (!key || pending) return;
     setPending(true);
-    const sentNonce = Math.max(localNonce.current, account?.nonce ?? 0) + 1;
+    const sentNonce = Math.max(localNonce.current, accountNonce) + 1;
     try {
       await signAndPost(
         key.secret,
