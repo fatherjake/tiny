@@ -11,7 +11,7 @@ import { useAccount, useOpenOrders } from "../hooks/useAccount";
 import { useBook, useMarket, useMarkets } from "../hooks/useMarket";
 import { bpsPct, currentPrice, previewOrder } from "../lib/orders";
 import { unscale, usd } from "../lib/scale";
-import { isLegendKey, isTyping, KEYS, shortcut } from "../lib/shortcuts";
+import { fieldOf, KEYS, shortcut } from "../lib/shortcuts";
 import type { OrderDraft } from "../types";
 
 function Key({ show, label }: { show: boolean; label: string }) {
@@ -59,14 +59,11 @@ export function OrderForm({
   const priceInput = useRef<HTMLInputElement>(null);
   const sizeInput = useRef<HTMLInputElement>(null);
   const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
-    if (isLegendKey(event.key)) {
-      setLegend(true);
-      return;
-    }
     if (event.defaultPrevented) return;
-    const action = shortcut(event, isTyping(event.target));
+    const action = shortcut(event, fieldOf(event.target));
     if (!action) return;
     event.preventDefault();
+    setLegend(true);
     switch (action.kind) {
       case "type":
         patch({ type: action.type });
@@ -92,16 +89,13 @@ export function OrderForm({
   });
   useEffect(() => {
     const down = (event: KeyboardEvent) => onKeyDown(event);
-    const up = (event: KeyboardEvent) => {
-      if (isLegendKey(event.key)) setLegend(false);
-    };
     const hide = () => setLegend(false);
     window.addEventListener("keydown", down);
-    window.addEventListener("keyup", up);
+    window.addEventListener("pointerdown", hide);
     window.addEventListener("blur", hide);
     return () => {
       window.removeEventListener("keydown", down);
-      window.removeEventListener("keyup", up);
+      window.removeEventListener("pointerdown", hide);
       window.removeEventListener("blur", hide);
     };
   }, []);
@@ -174,6 +168,7 @@ export function OrderForm({
             <input
               ref={priceInput}
               className="amount"
+              inputMode="decimal"
               value={form.price}
               onInput={(event) => patch({ price: event.currentTarget.value })}
             />
@@ -196,6 +191,7 @@ export function OrderForm({
           <input
             ref={sizeInput}
             className="amount"
+            inputMode="decimal"
             value={form.usd}
             onInput={(event) => patch({ usd: event.currentTarget.value })}
           />

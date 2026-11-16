@@ -30,25 +30,30 @@ const LETTERS: Record<string, Shortcut> = {
   p: { kind: "price" },
 };
 
-export function shortcut(press: Press, typing: boolean): Shortcut | null {
+export type Field = "none" | "amount" | "text";
+
+export function shortcut(press: Press, field: Field): Shortcut | null {
   if (press.metaKey || press.ctrlKey || press.altKey) return null;
-  if (press.key === "Escape") return typing ? { kind: "leave" } : null;
-  if (typing) return null;
-  if (/^[0-9]$/.test(press.key)) return { kind: "size", digit: press.key };
+  if (press.key === "Escape")
+    return field === "none" ? null : { kind: "leave" };
+  if (/^[0-9]$/.test(press.key)) {
+    return field === "none" ? { kind: "size", digit: press.key } : null;
+  }
+  if (field === "text") return null;
   return LETTERS[press.key.toLowerCase()] ?? null;
 }
 
-export function isLegendKey(key: string): boolean {
-  return key === "Meta" || key === "Control";
-}
-
-export function isTyping(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  if (target.isContentEditable) return true;
+export function fieldOf(target: EventTarget | null): Field {
+  if (!(target instanceof HTMLElement)) return "none";
+  if (target.isContentEditable) return "text";
   if (target instanceof HTMLInputElement) {
-    return !["checkbox", "radio", "button", "submit"].includes(target.type);
+    if (["checkbox", "radio", "button", "submit"].includes(target.type)) {
+      return "none";
+    }
+    return target.inputMode === "decimal" ? "amount" : "text";
   }
-  return (
-    target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement
-  );
+  return target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement
+    ? "text"
+    : "none";
 }
