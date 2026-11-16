@@ -87,6 +87,37 @@ def test_restart_keeps_node0_history_and_extends_the_chain(tmp_path) -> None:
     nodes2[0].store.close()
 
 
+def _trade(net, nodes, key, steps: int) -> None:
+    bot = Bot(key, "BTC-PERP", slot=0)
+    for _ in range(steps):
+        net.run_for(50)
+        bot.step(nodes[0], net.now)
+    net.run_for(1_000)
+
+
+def test_streamed_trade_seq_is_the_stored_fill_id_after_a_restart(tmp_path) -> None:
+    db = str(tmp_path / "sim.sqlite")
+    net, nodes, funded = build(4, (0, 0), 0.0, seed=0, traders=1, db=db)
+    wall_clock(nodes)
+    _trade(net, nodes, funded[0], 80)
+    assert nodes[0].store.recent_trades("BTC-PERP", 1)
+    nodes[0].store.close()
+
+    net2, nodes2, funded2 = build(4, (0, 0), 0.0, seed=0, traders=1, db=db)
+    _trade(net2, nodes2, funded2[0], 80)
+    streamed = list(nodes2[0].trades)
+    assert streamed, "bots traded after the restart"
+    stored = {row["id"]: row for row in nodes2[0].store.recent_trades("BTC-PERP", 500)}
+    for row in streamed:
+        fill = stored[row["seq"]]
+        assert (fill["height"], fill["price"], fill["size"]) == (
+            row["height"],
+            row["price"],
+            row["size"],
+        )
+    nodes2[0].store.close()
+
+
 def test_wall_clock_stamps_real_time_without_moving_the_network() -> None:
     net, nodes, _funded = build(1, (0, 0), 0.0, seed=0, traders=0)
     wall_clock(nodes)

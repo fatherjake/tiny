@@ -28,6 +28,7 @@ from core.store import MemoryStore, Store, with_progress
 from core.types import (
     QC,
     Block,
+    Fill,
     Hash,
     Market,
     NewView,
@@ -306,12 +307,15 @@ class Node:
         if block.height <= self.state.height:
             return
         self.state.apply_block(block)
-        self.store.append_block(block, tuple(self.state.events), self._qc_for(block))
-        for fill in self.state.block_fills:
-            self.trade_seq += 1
+        events = tuple(self.state.events)
+        ids = self.store.append_block(block, events, self._qc_for(block))
+        fills = [event for event in events if isinstance(event, Fill)]
+        # seq is the stored fill id, so streamed trades match /trades rows across restarts.
+        for seq, fill in zip(ids, fills, strict=True):
+            self.trade_seq = seq
             self.trades.append(
                 {
-                    "seq": self.trade_seq,
+                    "seq": seq,
                     "height": block.height,
                     "timestamp_ms": block.timestamp_ms,
                     "market": fill.market,
