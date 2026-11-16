@@ -37,6 +37,11 @@ export function App() {
   const traderId = trader.key?.trader ?? "";
   const actions = useOrderActions(trader.key);
   const [tab, setTab] = useState<DockTab>("positions");
+  const [picked, setPicked] = useState<string | null>(null);
+  const onPick = useCallback((market: string) => {
+    setPicked((prev) => (prev === market ? null : market));
+    setChosen(market);
+  }, []);
   const [dock, setDock] = useState(savedDock);
   const [form, setForm] = useState<OrderDraft>({
     side: "buy",
@@ -59,7 +64,7 @@ export function App() {
       style={{ "--dock": dock + "px" } as CSSProperties}
     >
       <Header ws={ws} selected={selected} onSelect={setChosen} />
-      <Chart market={selected} />
+      <Chart market={selected} trader={traderId} picked={picked} />
       <Ladder market={selected} trader={traderId} onPrice={onPrice} />
       <section className="side">
         <Wallet
@@ -99,6 +104,7 @@ export function App() {
         trader={traderId}
         onCancel={(order) => void actions.cancel(order)}
         onClose={(pos) => void actions.close(pos)}
+        pick={{ picked, onPick }}
         onResize={(height) => {
           const next = Math.round(
             Math.min(Math.max(height, 60), window.innerHeight - 200),

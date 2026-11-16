@@ -4,14 +4,20 @@ import {
   CandlestickSeries,
   ColorType,
   type IChartApi,
+  type IPriceLine,
   type ISeriesApi,
   LineSeries,
+  LineStyle,
   type Time,
   type UTCTimestamp,
   createChart,
 } from "lightweight-charts";
 
 import { useSeries } from "../hooks/useMarket";
+import {
+  type PositionLines,
+  usePositionLines,
+} from "../hooks/usePositionLines";
 import type { Series } from "../types";
 
 type Span = "1m" | "tick";
@@ -28,10 +34,32 @@ type Plot = {
 
 type Props = {
   market: string;
+  trader: string;
+  picked: string | null;
 };
 
-export function Chart({ market }: Props) {
+function withLines(
+  info: AutoscaleInfo | null,
+  lines: PositionLines | null,
+): AutoscaleInfo | null {
+  if (!info?.priceRange || !lines) return info;
+  const prices = [lines.entry, lines.liquidation].filter(
+    (price): price is number => price != null,
+  );
+  return {
+    ...info,
+    priceRange: {
+      minValue: Math.min(info.priceRange.minValue, ...prices),
+      maxValue: Math.max(info.priceRange.maxValue, ...prices),
+    },
+  };
+}
+
+export function Chart({ market, trader, picked }: Props) {
   const points = useSeries(market);
+  const lines = usePositionLines(trader, picked === market ? market : "");
+  const linesRef = useRef(lines);
+  linesRef.current = lines;
   const host = useRef<HTMLDivElement>(null);
   const api = useRef<Plot | null>(null);
   const [span, setSpan] = useState<Span>("1m");
@@ -93,23 +121,57 @@ export function Chart({ market }: Props) {
         autoscaleInfoProvider: (base: () => AutoscaleInfo | null) => {
           const px = shownRef.current;
           const seen = base();
-          if (px == null || seen?.priceRange == null) return seen;
+          if (px == null || seen?.priceRange == null) {
+            return withLines(seen, linesRef.current);
+          }
           const { minValue, maxValue } = seen.priceRange;
           const half = Math.max(
             (maxValue - px) * PAD,
             (px - minValue) * PAD,
             px * MIN_HALF,
           );
-          return { priceRange: { minValue: px - half, maxValue: px + half } };
+          return withLines(
+            { priceRange: { minValue: px - half, maxValue: px + half } },
+            linesRef.current,
+          );
         },
       }),
-      line: chart.addSeries(LineSeries, { color: "#000", lineWidth: 2 }),
+      line: chart.addSeries(LineSeries, {
+        color: "#000",
+        lineWidth: 2,
+        autoscaleInfoProvider: (base: () => AutoscaleInfo | null) =>
+          withLines(base(), linesRef.current),
+      }),
     };
     return () => {
       chart.remove();
       api.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    const plot = api.current;
+    if (!plot || !lines) return;
+    const series: ISeriesApi<"Candlestick"> | ISeriesApi<"Line"> =
+      span === "tick" ? plot.line : plot.candles;
+    const line = (price: number, title: string, color: string) =>
+      series.createPriceLine({
+        price,
+        title,
+        color,
+        lineWidth: 1,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: true,
+      });
+    const made: IPriceLine[] = [line(lines.entry, "entry", "#000")];
+    if (lines.liquidation != null) {
+      made.push(line(lines.liquidation, "liq.", "#c62828"));
+    }
+    plot.chart.priceScale("right").applyOptions({ autoScale: true });
+    return () => {
+      for (const priceLine of made) series.removePriceLine(priceLine);
+    };
+  }, [span, lines]);
 
   useEffect(() => {
     const plot = api.current;

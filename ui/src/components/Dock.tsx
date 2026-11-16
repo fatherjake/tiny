@@ -5,7 +5,7 @@ import {
   useOrderHistory,
 } from "../hooks/useAccount";
 import type { OpenOrder, Position } from "../types";
-import { Account } from "./Account";
+import { Account, type Pick } from "./Account";
 import { Fills, OrderHistory } from "./History";
 import { OpenOrders } from "./OpenOrders";
 
@@ -18,6 +18,7 @@ type Props = {
   trader: string;
   onCancel: (order: OpenOrder) => void;
   onClose: (pos: Position) => void;
+  pick: Pick;
   onResize: (height: number) => void;
 };
 
@@ -27,6 +28,7 @@ export function Dock({
   trader,
   onCancel,
   onClose,
+  pick,
   onResize,
 }: Props) {
   return (
@@ -55,7 +57,13 @@ export function Dock({
         ))}
       </div>
       <div className="pane">
-        <Pane tab={tab} trader={trader} onCancel={onCancel} onClose={onClose} />
+        <Pane
+          tab={tab}
+          trader={trader}
+          onCancel={onCancel}
+          onClose={onClose}
+          pick={pick}
+        />
       </div>
     </section>
   );
@@ -66,15 +74,17 @@ function Pane({
   trader,
   onCancel,
   onClose,
+  pick,
 }: {
   tab: DockTab;
   trader: string;
   onCancel: (order: OpenOrder) => void;
   onClose: (pos: Position) => void;
+  pick: Pick;
 }) {
   switch (tab) {
     case "positions":
-      return <PositionsPane trader={trader} onClose={onClose} />;
+      return <PositionsPane trader={trader} onClose={onClose} pick={pick} />;
     case "orders":
       return <OrdersPane trader={trader} onCancel={onCancel} />;
     case "fills":
@@ -87,11 +97,13 @@ function Pane({
 function PositionsPane({
   trader,
   onClose,
+  pick,
 }: {
   trader: string;
   onClose: (pos: Position) => void;
+  pick: Pick;
 }) {
-  return <Account account={useAccount(trader)} onClose={onClose} />;
+  return <Account account={useAccount(trader)} onClose={onClose} pick={pick} />;
 }
 
 function OrdersPane({
