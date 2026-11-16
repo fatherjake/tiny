@@ -6,10 +6,9 @@ import {
   useMarket,
   useMarketsSelect,
   useStatus,
-  useTrades,
 } from "../hooks/useMarket";
 import { bi, pct, short, usd } from "../lib/scale";
-import type { MarketInfo, Trade } from "../types";
+import type { MarketInfo } from "../types";
 
 type Props = {
   ws: string;
@@ -18,7 +17,6 @@ type Props = {
 };
 
 const names = (markets: MarketInfo[]) => markets.map((item) => item.name);
-const first = (trades: Trade[]) => trades[0];
 
 const YEAR_MS = 365n * 24n * 3_600_000n;
 
@@ -47,7 +45,11 @@ function SinceBlock() {
   }, []);
   const ago =
     at == null ? "-" : (Math.max(0, now - at) / 1000).toFixed(1) + "s";
-  return <span title="since the last block arrived">block {ago}</span>;
+  return (
+    <span title="since the last block arrived">
+      <b>block</b> {ago}
+    </span>
+  );
 }
 
 export function Header({ ws, selected, onSelect }: Props) {
@@ -55,7 +57,6 @@ export function Header({ ws, selected, onSelect }: Props) {
   const status = useStatus();
   const market = useMarket(selected);
   const markets = useMarketsSelect(names) ?? [];
-  const last = useTrades(selected, first);
   return (
     <header>
       <div className="quote">
@@ -74,9 +75,6 @@ export function Header({ ws, selected, onSelect }: Props) {
           )}
         </select>
         <span>
-          <b>{last ? last.side : "last"}</b> {usd(last ? last.price : null)}
-        </span>
-        <span>
           <b>mark</b> {usd(market?.mark_price)}
         </span>
         <span>
@@ -87,16 +85,22 @@ export function Header({ ws, selected, onSelect }: Props) {
         </span>
       </div>
       <div className="quote">
-        <span>node {status?.node ?? "-"}</span>
-        <span>height {status?.height ?? "-"}</span>
-        <span>view {status?.view ?? "-"}</span>
+        <span>
+          <b>node</b> {status?.node ?? "-"}
+        </span>
+        <span>
+          <b>height</b> {status?.height ?? "-"}
+        </span>
+        <span>
+          <b>view</b> {status?.view ?? "-"}
+        </span>
         <span>{short(status?.tip)}</span>
         <span title="round trip to /status">
-          rtt {status?.rttMs == null ? "-" : status.rttMs + "ms"}
+          <b>rtt</b> {status?.rttMs == null ? "-" : status.rttMs + "ms"}
         </span>
         <SinceBlock />
         <span title="your last order, from submit to its block">
-          incl {inclusion == null ? "-" : inclusion + "ms"}
+          <b>incl</b> {inclusion == null ? "-" : inclusion + "ms"}
         </span>
         <b>{ws}</b>
       </div>

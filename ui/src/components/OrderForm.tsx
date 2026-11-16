@@ -116,7 +116,7 @@ export function OrderForm({
   };
   return (
     <form className="pad" onSubmit={submit}>
-      <div className="row">
+      <div className="group">
         <button
           type="button"
           className={form.type === "market" ? "on" : ""}
@@ -134,7 +134,7 @@ export function OrderForm({
           limit
         </button>
       </div>
-      <div className="row">
+      <div className="group">
         <button
           type="button"
           className={form.side === "buy" ? "on" : ""}
@@ -220,6 +220,11 @@ export function OrderForm({
           reduce only
         </label>
       </div>
+      <button type="submit" className="dark wide">
+        <Key show={legend} label={KEYS.submit} />
+        {pending ? "Sending Order" : "Place Order"}
+      </button>
+      {note ? <div className={bad ? "error" : ""}>{note}</div> : null}
       <div className="row spread">
         <span>liquidation price</span>
         <span>{usd(preview.liquidation)}</span>
@@ -249,14 +254,9 @@ export function OrderForm({
         </span>
       </div>
       {preview.problem && !preview.short ? <div>{preview.problem}</div> : null}
-      <button type="submit" className="dark wide">
-        <Key show={legend} label={KEYS.submit} />
-        {pending ? "Sending Order" : "Place Order"}
-      </button>
       <div className="muted stamp">
         id {orderId} nonce {nonce}
       </div>
-      {note ? <div className={bad ? "error" : ""}>{note}</div> : null}
     </form>
   );
 }
