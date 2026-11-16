@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { applyCandles, rememberPrint, seed } from "./series";
+import { applyCandles, seed } from "./series";
 
 describe("applyCandles", () => {
   it("builds open high low close in time order, at the block time", () => {
@@ -87,11 +87,8 @@ describe("tick series", () => {
       { time: 3, value: 3 },
       { time: 4, value: 4 },
     ]);
-    const live = rememberPrint({ BTC: seeded }, "BTC", {
-      height: 4,
-      price: 5_000_000,
-    });
-    expect(live.BTC.ticks).toEqual([
+    const live = seed(seeded, [{ height: 4, price: 5_000_000 }]);
+    expect(live.ticks).toEqual([
       { time: 2, value: 2.5 },
       { time: 3, value: 3 },
       { time: 4, value: 5 },
