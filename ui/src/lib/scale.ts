@@ -97,3 +97,22 @@ export function usdSign(n: Scaled | null | undefined | ""): string {
   if (n == null || n === "") return "-";
   return bi(n) > 0n ? "+" + usd(n) : usd(n);
 }
+
+export function pctShort(
+  part: Scaled | null | undefined,
+  whole: Scaled | null | undefined,
+): string {
+  if (part == null || whole == null) return "-";
+  const den = bi(whole);
+  if (den === 0n) return "-";
+  const bps = (bi(part) * 10_000n) / den;
+  const neg = bps < 0n;
+  const a = neg ? -bps : bps;
+  return (
+    (neg ? "-" : "") +
+    (a / 100n).toString() +
+    "." +
+    (a % 100n).toString().padStart(2, "0") +
+    "%"
+  );
+}

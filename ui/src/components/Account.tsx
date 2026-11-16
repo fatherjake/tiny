@@ -1,7 +1,7 @@
 import { useFlash } from "../hooks/useFlash";
 import { useMarkets } from "../hooks/useMarket";
-import { positionValue } from "../lib/orders";
-import { SCALE, bi, fmtSign, usd, usdSign } from "../lib/scale";
+import { positionRisk, positionValue } from "../lib/orders";
+import { SCALE, bi, fmtSign, pctShort, usd, usdSign } from "../lib/scale";
 import type { AccountView, Position, Scaled } from "../types";
 
 type Props = {
@@ -27,11 +27,20 @@ function upnl(pos: Position, mark: Scaled | null | undefined): bigint | null {
 
 const CENT = 10_000n;
 
-function PnlCell({ pnl }: { pnl: bigint | null }) {
+function PnlCell({
+  pnl,
+  margin,
+}: {
+  pnl: bigint | null;
+  margin: bigint | null;
+}) {
   const flash = useFlash(pnl == null ? null : pnl / CENT);
   const tone = pnl == null || pnl === 0n ? "" : pnl > 0n ? "up" : "down";
+  const share = pctShort(pnl, margin);
   return (
-    <td className={[tone, flash].filter(Boolean).join(" ")}>{usdSign(pnl)}</td>
+    <td className={[tone, flash].filter(Boolean).join(" ")}>
+      {usdSign(pnl)} {pnl != null && pnl > 0n ? "+" + share : share}
+    </td>
   );
 }
 
@@ -40,10 +49,7 @@ export function Account({ account, onClose }: Props) {
   const positions = Object.values(account?.positions ?? {}).sort((a, b) =>
     String(a.market).localeCompare(String(b.market)),
   );
-  const markOf = (name: string): Scaled | null => {
-    const found = markets.find((item) => item.name === name);
-    return found ? found.mark_price : null;
-  };
+  const collateral = bi(account?.collateral ?? 0);
   return (
     <section className="pad grow">
       <table>
@@ -52,6 +58,7 @@ export function Account({ account, onClose }: Props) {
             <td className="l">market</td>
             <td>size</td>
             <td>entry</td>
+            <td>liq.</td>
             <td>pnl</td>
             <td></td>
           </tr>
@@ -61,8 +68,18 @@ export function Account({ account, onClose }: Props) {
             positions.map((pos) => {
               const size = bi(pos.size);
               const side = size > 0n ? "B" : size < 0n ? "S" : "";
-              const mark = markOf(pos.market);
+              const market = markets.find((item) => item.name === pos.market);
+              const mark: Scaled | null = market?.mark_price ?? null;
               const pnl = upnl(pos, mark);
+              const risk = market
+                ? positionRisk(
+                    size,
+                    bi(pos.entry_notional),
+                    collateral,
+                    mark,
+                    market,
+                  )
+                : null;
               return (
                 <tr key={pos.market}>
                   <td className="l">{pos.market}</td>
@@ -73,7 +90,13 @@ export function Account({ account, onClose }: Props) {
                     </span>
                   </td>
                   <td>{usd(entryPrice(pos))}</td>
-                  <PnlCell pnl={pnl} />
+                  <td>
+                    {usd(risk?.liquidation)}{" "}
+                    <span className="muted">
+                      {pctShort(risk?.toLiquidation, mark)}
+                    </span>
+                  </td>
+                  <PnlCell pnl={pnl} margin={risk?.margin ?? null} />
                   <td>
                     <button type="button" onClick={() => onClose(pos)}>
                       close
@@ -84,7 +107,7 @@ export function Account({ account, onClose }: Props) {
             })
           ) : (
             <tr>
-              <td className="l" colSpan={5}>
+              <td className="l" colSpan={6}>
                 none
               </td>
             </tr>

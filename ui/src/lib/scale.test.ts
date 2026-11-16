@@ -4,6 +4,7 @@ import {
   fmt,
   parseScaled,
   pct,
+  pctShort,
   shorten,
   tryScaled,
   unscale,
@@ -62,5 +63,13 @@ describe("shorten", () => {
 
   it("leaves a value that would not get shorter", () => {
     expect(shorten("0x1234567", 5, 3)).toBe("0x1234567");
+  });
+});
+
+describe("pctShort", () => {
+  it("rounds toward zero at two places", () => {
+    expect(pctShort(3_608_247_423n, 50_000_000_000n)).toBe("7.21%");
+    expect(pctShort(-7n, 1_000n)).toBe("-0.70%");
+    expect(pctShort(1n, 0n)).toBe("-");
   });
 });

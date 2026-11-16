@@ -7,6 +7,7 @@ import {
   closeOrder,
   currentPrice,
   fillSide,
+  positionRisk,
   positionValue,
   liquidationPrice,
   marketPrice,
@@ -301,5 +302,43 @@ describe("positionValue", () => {
 
   it("is unknown without a mark", () => {
     expect(positionValue(500_000n, null)).toBeNull();
+  });
+});
+
+describe("positionRisk", () => {
+  const market = {
+    name: "BTC-PERP",
+    tick_size: 1,
+    lot_size: 1,
+    max_leverage: 10,
+    maintenance_margin_bps: 300,
+    oracle_price: null,
+    mark_price: null,
+    funding_index: null,
+    funding_ts: null,
+    funding_base: null,
+  };
+
+  it("gives the liquidation price, the gap to it from the mark, and the initial margin", () => {
+    expect(
+      positionRisk(
+        200_000n,
+        10_000_000_000n,
+        1_000_000_000n,
+        50_000_000_000,
+        market,
+      ),
+    ).toEqual({
+      liquidation: 46_391_752_577n,
+      toLiquidation: 3_608_247_423n,
+      margin: 1_000_000_000n,
+    });
+  });
+
+  it("has no gap without a mark", () => {
+    expect(
+      positionRisk(200_000n, 10_000_000_000n, 1_000_000_000n, null, market)
+        .toLiquidation,
+    ).toBeNull();
   });
 });
