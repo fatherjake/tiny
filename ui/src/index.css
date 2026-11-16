@@ -358,3 +358,10 @@ button.dark:disabled {
   text-align: center;
   pointer-events: none;
 }
+
+.up {
+  color: #18803a;
+}
+.down {
+  color: #c62828;
+}

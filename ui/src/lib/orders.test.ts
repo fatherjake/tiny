@@ -7,6 +7,7 @@ import {
   closeOrder,
   currentPrice,
   fillSide,
+  positionValue,
   liquidationPrice,
   marketPrice,
   midPrice,
@@ -289,5 +290,16 @@ describe("fillSide", () => {
   it("is the other side for the maker whose resting order was hit", () => {
     expect(fillSide(fill, "bb")).toBe("buy");
     expect(fillSide({ ...fill, side: "buy" }, "bb")).toBe("sell");
+  });
+});
+
+describe("positionValue", () => {
+  it("is the size at the mark, the same for a long and a short", () => {
+    expect(positionValue(500_000n, 50_000_000_000)).toBe(25_000_000_000n);
+    expect(positionValue(-500_000n, 50_000_000_000)).toBe(25_000_000_000n);
+  });
+
+  it("is unknown without a mark", () => {
+    expect(positionValue(500_000n, null)).toBeNull();
   });
 });
