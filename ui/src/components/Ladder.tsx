@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+
+import { useOpenOrders } from "../hooks/useAccount";
 
 import {
   useBook,
@@ -8,13 +10,14 @@ import {
   useTrades,
 } from "../hooks/useMarket";
 import type { Scaled, Trade } from "../types";
-import { Book } from "./Book";
+import { Book, mineKey } from "./Book";
 import { Feed } from "./Feed";
 import { Funding } from "./History";
 import { Tape } from "./Tape";
 
 type Props = {
   market: string;
+  trader: string;
   onPrice: (price: Scaled) => void;
 };
 
@@ -28,8 +31,20 @@ const TABS = [
 const PRINTS = 40;
 const latest = (rows: Trade[]) => rows.slice(0, PRINTS);
 
-function BookTab({ market, onPrice }: Props) {
-  return <Book book={useBook(market)} onPrice={onPrice} />;
+function BookTab({ market, trader, onPrice }: Props) {
+  const orders = useOpenOrders(trader);
+  const mine = useMemo(
+    () =>
+      new Set(
+        orders
+          .filter((order) => order.market === market)
+          .map((order) =>
+            mineKey(order.side === "buy" ? "bid" : "ask", order.price),
+          ),
+      ),
+    [orders, market],
+  );
+  return <Book book={useBook(market)} mine={mine} onPrice={onPrice} />;
 }
 
 function TradesTab({ market }: { market: string }) {
@@ -44,7 +59,7 @@ function BlocksTab() {
   return <Feed blocks={useFeed()} />;
 }
 
-export function Ladder({ market, onPrice }: Props) {
+export function Ladder({ market, trader, onPrice }: Props) {
   const [tab, setTab] = useState<(typeof TABS)[number][0]>("book");
   return (
     <section className="depth">
@@ -60,7 +75,9 @@ export function Ladder({ market, onPrice }: Props) {
           </button>
         ))}
       </div>
-      {tab === "book" ? <BookTab market={market} onPrice={onPrice} /> : null}
+      {tab === "book" ? (
+        <BookTab market={market} trader={trader} onPrice={onPrice} />
+      ) : null}
       {tab === "trades" ? <TradesTab market={market} /> : null}
       {tab === "funding" ? <FundingTab market={market} /> : null}
       {tab === "blocks" ? <BlocksTab /> : null}

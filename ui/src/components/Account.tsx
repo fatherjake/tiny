@@ -1,3 +1,4 @@
+import { useFlash } from "../hooks/useFlash";
 import { useMarkets } from "../hooks/useMarket";
 import { positionValue } from "../lib/orders";
 import { SCALE, bi, fmtSign, usd, usdSign } from "../lib/scale";
@@ -22,6 +23,16 @@ function upnl(pos: Position, mark: Scaled | null | undefined): bigint | null {
   const notional = (abs * bi(mark)) / SCALE;
   const entry = bi(pos.entry_notional);
   return size > 0n ? notional - entry : entry - notional;
+}
+
+const CENT = 10_000n;
+
+function PnlCell({ pnl }: { pnl: bigint | null }) {
+  const flash = useFlash(pnl == null ? null : pnl / CENT);
+  const tone = pnl == null || pnl === 0n ? "" : pnl > 0n ? "up" : "down";
+  return (
+    <td className={[tone, flash].filter(Boolean).join(" ")}>{usdSign(pnl)}</td>
+  );
 }
 
 export function Account({ account, onClose }: Props) {
@@ -62,13 +73,7 @@ export function Account({ account, onClose }: Props) {
                     </span>
                   </td>
                   <td>{usd(entryPrice(pos))}</td>
-                  <td
-                    className={
-                      pnl == null || pnl === 0n ? "" : pnl > 0n ? "up" : "down"
-                    }
-                  >
-                    {usdSign(pnl)}
-                  </td>
+                  <PnlCell pnl={pnl} />
                   <td>
                     <button type="button" onClick={() => onClose(pos)}>
                       close
