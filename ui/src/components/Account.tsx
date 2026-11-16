@@ -1,20 +1,19 @@
 import { useFlash } from "../hooks/useFlash";
 import { useMarkets } from "../hooks/useMarket";
-import { positionRisk, positionValue } from "../lib/orders";
+import { entryPrice, positionRisk, positionValue } from "../lib/orders";
 import { SCALE, bi, fmtSign, pctShort, usd, usdSign } from "../lib/scale";
 import type { AccountView, Position, Scaled } from "../types";
+
+export type Pick = {
+  picked: string | null;
+  onPick: (market: string) => void;
+};
 
 type Props = {
   account: AccountView | null;
   onClose: (pos: Position) => void;
+  pick?: Pick;
 };
-
-function entryPrice(pos: Position): bigint {
-  const size = bi(pos.size);
-  if (size === 0n) return 0n;
-  const abs = size < 0n ? -size : size;
-  return (bi(pos.entry_notional) * SCALE) / abs;
-}
 
 function upnl(pos: Position, mark: Scaled | null | undefined): bigint | null {
   if (mark == null) return null;
@@ -42,7 +41,7 @@ function PnlCell({
   );
 }
 
-export function Account({ account, onClose }: Props) {
+export function Account({ account, onClose, pick }: Props) {
   const markets = useMarkets();
   const positions = Object.values(account?.positions ?? {}).sort((a, b) =>
     String(a.market).localeCompare(String(b.market)),
@@ -79,7 +78,17 @@ export function Account({ account, onClose }: Props) {
                   )
                 : null;
               return (
-                <tr key={pos.market}>
+                <tr
+                  key={pos.market}
+                  className={
+                    pick
+                      ? pick.picked === pos.market
+                        ? "pick on"
+                        : "pick"
+                      : undefined
+                  }
+                  onClick={pick ? () => pick.onPick(pos.market) : undefined}
+                >
                   <td className="l">{pos.market}</td>
                   <td>
                     {fmtSign(size)} {side}{" "}
@@ -96,7 +105,13 @@ export function Account({ account, onClose }: Props) {
                   </td>
                   <PnlCell pnl={pnl} margin={risk?.margin ?? null} />
                   <td>
-                    <button type="button" onClick={() => onClose(pos)}>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onClose(pos);
+                      }}
+                    >
                       close
                     </button>
                   </td>

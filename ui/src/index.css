@@ -451,3 +451,7 @@ header .quote:first-child {
   opacity: 0.45;
   filter: grayscale(1);
 }
+
+tr.pick {
+  cursor: pointer;
+}

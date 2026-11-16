@@ -321,3 +321,10 @@ export function positionRisk(
     margin: entry / BigInt(Math.max(1, market.max_leverage)),
   };
 }
+
+export function entryPrice(pos: Position): bigint {
+  const size = bi(pos.size);
+  if (size === 0n) return 0n;
+  const abs = size < 0n ? -size : size;
+  return (bi(pos.entry_notional) * SCALE) / abs;
+}
