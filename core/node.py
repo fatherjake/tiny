@@ -1,13 +1,13 @@
 """
-    A validator: everything one participant runs, wired together.
+A validator: everything one participant runs, wired together.
 
-    keypair     -> signs stuff
-    mempool     -> pending txs, deduped by (signer, nonce)
-    Consensus   -> HotStuff on_commit hands blocks to State
-    State       -> deterministic state machine
-    sync        -> snapshot and block replay for catch up
-    price       -> every block sends a SetOraclePrice tx from the price feed
-    transport   -> in-memory or TCP
+keypair     -> signs stuff
+mempool     -> pending txs, deduped by (signer, nonce)
+Consensus   -> HotStuff on_commit hands blocks to State
+State       -> deterministic state machine
+sync        -> snapshot and block replay for catch up
+price       -> every block sends a SetOraclePrice tx from the price feed
+transport   -> in-memory or TCP
 """
 
 from __future__ import annotations
@@ -57,6 +57,19 @@ TxKey = tuple[str, int]  # (signer, nonce)
 
 
 # ---------------------------------------------------------------- keys and signatures
+
+
+def snapshot_state(snap: Snapshot, header: Block) -> State | None:
+    """The snapshot's state, or None unless it decodes and matches `header`'s state root."""
+    if header.height != snap.height:
+        return None
+    try:
+        loaded = State.from_bytes(snap.state_bytes)
+    except (ValueError, KeyError, TypeError):
+        return None
+    if loaded.height != snap.height or loaded.state_root() != header.state_root:
+        return None
+    return loaded
 
 
 def public_key(private_key: bytes) -> bytes:
@@ -313,6 +326,7 @@ class Node:
         self.consensus.blocks[block.hash] = block
         if block.height % SNAPSHOT_EVERY == 0:
             self.latest_snapshot = Snapshot(block.height, self.state.to_bytes())
+            self.store.save_snapshot(self.latest_snapshot)
         if not self.catching_up:
             self.submit_prices()
 
@@ -331,11 +345,11 @@ class Node:
         return found
 
     def resume(self, blocks: tuple[Block, ...], tip: QC, state: State | None = None) -> None:
-        """Replay `blocks`, or take `state` as already having applied them."""
+        """Take `state` if given, then replay the `blocks` above its height."""
         if state is not None:
             self.state = state
         for block in with_progress(blocks, len(blocks), f"node {self.id}: replayed blocks"):
-            if state is None:
+            if block.height > self.state.height:
                 self.state.apply_block(block)
             self.by_height[block.height] = block
             self.committed.append(block)
@@ -514,11 +528,8 @@ class Node:
         )
         if proof is None:
             return False
-        try:
-            loaded = State.from_bytes(snap.state_bytes)
-        except (ValueError, KeyError, TypeError):
-            return False
-        if loaded.height != snap.height or loaded.state_root() != header.state_root:
+        loaded = snapshot_state(snap, header)
+        if loaded is None:
             return False
         if snap.height <= self.state.height:
             return True

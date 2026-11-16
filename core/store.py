@@ -18,7 +18,7 @@ from urllib.request import pathname2url
 from pydantic import ConfigDict, RootModel
 
 from core.state import State
-from core.types import QC, Block, Fill, FundingEvent, Market, OrderEvent, encode
+from core.types import QC, Block, Fill, FundingEvent, Market, OrderEvent, Snapshot, encode
 
 INTERVALS = {"1s": 1_000, "1m": 60_000, "5m": 300_000, "1h": 3_600_000}
 _JSON = ConfigDict(strict=True, val_json_bytes="hex", ser_json_bytes="hex")
@@ -188,9 +188,13 @@ class Store(Protocol):
         qc: QC | None = None,
     ) -> None: ...
 
-    def committed_blocks(self) -> tuple[Block, ...]: ...
+    def committed_blocks(self, from_height: int = 1) -> tuple[Block, ...]: ...
 
     def tip_qc(self) -> QC | None: ...
+
+    def save_snapshot(self, snap: Snapshot) -> None: ...
+
+    def latest_snapshot(self) -> Snapshot | None: ...
 
     def recent_trades(self, market: str, limit: int, before: Cursor | None = None) -> list[Row]: ...
 
@@ -222,6 +226,7 @@ class MemoryStore:
         self._lock = threading.Lock()
         self._blocks: list[Block] = []
         self._tip: QC | None = None
+        self._snapshot: Snapshot | None = None
         self._fills: list[Row] = []
         self._orders: dict[tuple[str, int], Row] = {}
         self._funding: list[Row] = []
@@ -239,12 +244,18 @@ class MemoryStore:
                 self._tip = qc
             self._apply(events)
 
-    def committed_blocks(self) -> tuple[Block, ...]:
+    def committed_blocks(self, from_height: int = 1) -> tuple[Block, ...]:
         with self._lock:
-            return tuple(self._blocks)
+            return tuple(block for block in self._blocks if block.height >= from_height)
 
     def tip_qc(self) -> QC | None:
         return self._tip
+
+    def save_snapshot(self, snap: Snapshot) -> None:
+        self._snapshot = snap
+
+    def latest_snapshot(self) -> Snapshot | None:
+        return self._snapshot
 
     def recent_trades(self, market: str, limit: int, before: Cursor | None = None) -> list[Row]:
         with self._lock:
@@ -374,6 +385,11 @@ CREATE TABLE IF NOT EXISTS tip (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     qc BLOB NOT NULL
 );
+CREATE TABLE IF NOT EXISTS snapshot (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    height INTEGER NOT NULL,
+    state BLOB NOT NULL
+);
 """
 
 _NEWEST_COLUMN = {"orders": "reason", "funding": "ts"}
@@ -457,10 +473,14 @@ class SqliteStore:
                 self._db.execute("ROLLBACK")
                 raise
 
-    def committed_blocks(self) -> tuple[Block, ...]:
+    def committed_blocks(self, from_height: int = 1) -> tuple[Block, ...]:
         with self._lock:
-            total = self._db.execute("SELECT COUNT(*) FROM blocks").fetchone()[0]
-            rows = self._db.execute("SELECT body FROM blocks ORDER BY height")
+            total = self._db.execute(
+                "SELECT COUNT(*) FROM blocks WHERE height >= ?", (from_height,)
+            ).fetchone()[0]
+            rows = self._db.execute(
+                "SELECT body FROM blocks WHERE height >= ? ORDER BY height", (from_height,)
+            )
             return tuple(
                 decode_block(bytes(row[0])) for row in with_progress(rows, total, "read blocks")
             )
@@ -471,6 +491,23 @@ class SqliteStore:
         if row is None:
             return None
         return decode_qc(bytes(row[0]))
+
+    def save_snapshot(self, snap: Snapshot) -> None:
+        with self._lock:
+            self._db.execute(
+                """
+                INSERT INTO snapshot (id, height, state) VALUES (1, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET height = excluded.height, state = excluded.state
+                """,
+                (snap.height, snap.state_bytes),
+            )
+
+    def latest_snapshot(self) -> Snapshot | None:
+        with self._lock:
+            row = self._db.execute("SELECT height, state FROM snapshot WHERE id = 1").fetchone()
+        if row is None:
+            return None
+        return Snapshot(row[0], bytes(row[1]))
 
     def recent_trades(self, market: str, limit: int, before: Cursor | None = None) -> list[Row]:
         return self._fills("market = ?", (market,), limit, before)
