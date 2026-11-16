@@ -14,10 +14,7 @@ import {
 } from "lightweight-charts";
 
 import { useSeries } from "../hooks/useMarket";
-import {
-  type PositionLines,
-  usePositionLines,
-} from "../hooks/usePositionLines";
+import { usePositionLines } from "../hooks/usePositionLines";
 import type { Series } from "../types";
 
 type Span = "1m" | "tick";
@@ -38,28 +35,9 @@ type Props = {
   picked: string | null;
 };
 
-function withLines(
-  info: AutoscaleInfo | null,
-  lines: PositionLines | null,
-): AutoscaleInfo | null {
-  if (!info?.priceRange || !lines) return info;
-  const prices = [lines.entry, lines.liquidation].filter(
-    (price): price is number => price != null,
-  );
-  return {
-    ...info,
-    priceRange: {
-      minValue: Math.min(info.priceRange.minValue, ...prices),
-      maxValue: Math.max(info.priceRange.maxValue, ...prices),
-    },
-  };
-}
-
 export function Chart({ market, trader, picked }: Props) {
   const points = useSeries(market);
   const lines = usePositionLines(trader, picked === market ? market : "");
-  const linesRef = useRef(lines);
-  linesRef.current = lines;
   const host = useRef<HTMLDivElement>(null);
   const api = useRef<Plot | null>(null);
   const [span, setSpan] = useState<Span>("1m");
@@ -121,27 +99,17 @@ export function Chart({ market, trader, picked }: Props) {
         autoscaleInfoProvider: (base: () => AutoscaleInfo | null) => {
           const px = shownRef.current;
           const seen = base();
-          if (px == null || seen?.priceRange == null) {
-            return withLines(seen, linesRef.current);
-          }
+          if (px == null || seen?.priceRange == null) return seen;
           const { minValue, maxValue } = seen.priceRange;
           const half = Math.max(
             (maxValue - px) * PAD,
             (px - minValue) * PAD,
             px * MIN_HALF,
           );
-          return withLines(
-            { priceRange: { minValue: px - half, maxValue: px + half } },
-            linesRef.current,
-          );
+          return { priceRange: { minValue: px - half, maxValue: px + half } };
         },
       }),
-      line: chart.addSeries(LineSeries, {
-        color: "#000",
-        lineWidth: 2,
-        autoscaleInfoProvider: (base: () => AutoscaleInfo | null) =>
-          withLines(base(), linesRef.current),
-      }),
+      line: chart.addSeries(LineSeries, { color: "#000", lineWidth: 2 }),
     };
     return () => {
       chart.remove();
@@ -167,7 +135,6 @@ export function Chart({ market, trader, picked }: Props) {
     if (lines.liquidation != null) {
       made.push(line(lines.liquidation, "liq.", "#c62828"));
     }
-    plot.chart.priceScale("right").applyOptions({ autoScale: true });
     return () => {
       for (const priceLine of made) series.removePriceLine(priceLine);
     };
