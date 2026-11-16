@@ -1,4 +1,5 @@
 import { useMarkets } from "../hooks/useMarket";
+import { positionValue } from "../lib/orders";
 import { SCALE, bi, fmtSign, usd, usdSign } from "../lib/scale";
 import type { AccountView, Position, Scaled } from "../types";
 
@@ -49,14 +50,25 @@ export function Account({ account, onClose }: Props) {
             positions.map((pos) => {
               const size = bi(pos.size);
               const side = size > 0n ? "B" : size < 0n ? "S" : "";
+              const mark = markOf(pos.market);
+              const pnl = upnl(pos, mark);
               return (
                 <tr key={pos.market}>
                   <td className="l">{pos.market}</td>
                   <td>
-                    {fmtSign(size)} {side}
+                    {fmtSign(size)} {side}{" "}
+                    <span className="muted">
+                      {usd(positionValue(size, mark))}
+                    </span>
                   </td>
                   <td>{usd(entryPrice(pos))}</td>
-                  <td>{usdSign(upnl(pos, markOf(pos.market)))}</td>
+                  <td
+                    className={
+                      pnl == null || pnl === 0n ? "" : pnl > 0n ? "up" : "down"
+                    }
+                  >
+                    {usdSign(pnl)}
+                  </td>
                   <td>
                     <button type="button" onClick={() => onClose(pos)}>
                       close

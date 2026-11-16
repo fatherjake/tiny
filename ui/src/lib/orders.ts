@@ -285,3 +285,12 @@ export function fillSide(
   if (fill.taker === trader) return fill.side;
   return fill.side === "buy" ? "sell" : "buy";
 }
+
+export function positionValue(
+  size: bigint,
+  mark: Scaled | null | undefined,
+): bigint | null {
+  if (mark == null) return null;
+  const abs = size < 0n ? -size : size;
+  return (abs * bi(mark)) / SCALE;
+}

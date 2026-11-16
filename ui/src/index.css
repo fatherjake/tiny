@@ -266,11 +266,11 @@ button.px {
   background: rgb(27 138 62 / 32%);
 }
 .book button.px.ask,
-.tape td.ask {
+td.ask {
   color: #c62828;
 }
 .book button.px.bid,
-.tape td.bid {
+td.bid {
   color: #18803a;
 }
 .book tr.mid td {
@@ -357,4 +357,11 @@ button.dark:disabled {
   font: 9px/13px sans-serif;
   text-align: center;
   pointer-events: none;
+}
+
+.up {
+  color: #18803a;
+}
+.down {
+  color: #c62828;
 }
