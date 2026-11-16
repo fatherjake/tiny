@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  type AutoscaleInfo,
   CandlestickSeries,
   ColorType,
   type IChartApi,
@@ -20,8 +19,6 @@ import type { Series } from "../types";
 type Span = "1m" | "tick";
 
 const WINDOW_S = 30 * 60;
-const PAD = 1.15;
-const MIN_HALF = 0.0005;
 
 type Plot = {
   chart: IChartApi;
@@ -44,9 +41,7 @@ export function Chart({ market, trader, picked }: Props) {
   const spanRef = useRef(span);
   const fitted = useRef<string | null>(null);
   const shown = shownPrice(points, span);
-  const shownRef = useRef(shown);
   spanRef.current = span;
-  shownRef.current = shown;
 
   useEffect(() => {
     const el = host.current;
@@ -96,18 +91,6 @@ export function Chart({ market, trader, picked }: Props) {
         borderDownColor: "#c62828",
         wickUpColor: "#18803a",
         wickDownColor: "#c62828",
-        autoscaleInfoProvider: (base: () => AutoscaleInfo | null) => {
-          const px = shownRef.current;
-          const seen = base();
-          if (px == null || seen?.priceRange == null) return seen;
-          const { minValue, maxValue } = seen.priceRange;
-          const half = Math.max(
-            (maxValue - px) * PAD,
-            (px - minValue) * PAD,
-            px * MIN_HALF,
-          );
-          return { priceRange: { minValue: px - half, maxValue: px + half } };
-        },
       }),
       line: chart.addSeries(LineSeries, { color: "#000", lineWidth: 2 }),
     };
