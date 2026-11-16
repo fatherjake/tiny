@@ -27,17 +27,6 @@ function lastOf<T>(rows: T[]): T | undefined {
   return rows.length === 0 ? undefined : rows[rows.length - 1];
 }
 
-function noteBlock(book: Series, price: Scaled, height: number): Series {
-  const ticks = book.ticks ?? [];
-  const last = lastOf(ticks);
-  if (last && height < last.time) return book;
-  const value = Number(bi(price)) / 1e6;
-  const next = (
-    last && last.time === height ? ticks.slice(0, -1) : ticks
-  ).concat([{ time: height, value }]);
-  return { ...book, ticks: next };
-}
-
 export type CandleRow = {
   ts: Scaled;
   open: Scaled;
@@ -75,23 +64,19 @@ export function applyCandles(book: Series, rows: CandleRow[]): Series {
 
 type SeedRow = { height: number; price?: Scaled | null };
 
+// Rows are newest first. Keeps one point per block, the latest trade's price.
 export function seed(book: Series, rows: SeedRow[]): Series {
-  let next = book;
+  const ticks = [...(book.ticks ?? [])];
+  let changed = false;
   for (let i = rows.length - 1; i >= 0; i--) {
-    const row = rows[i];
-    if (row.price != null) next = noteBlock(next, row.price, row.height);
+    const { height, price } = rows[i];
+    if (price == null) continue;
+    const last = lastOf(ticks);
+    if (last && height < last.time) continue;
+    const point = { time: height, value: Number(bi(price)) / 1e6 };
+    if (last && last.time === height) ticks[ticks.length - 1] = point;
+    else ticks.push(point);
+    changed = true;
   }
-  return next;
-}
-
-export function rememberPrint(
-  series: Record<string, Series>,
-  market: string,
-  trade: { price?: Scaled | null; height?: number },
-): Record<string, Series> {
-  if (trade.price == null || trade.height == null) return series;
-  return {
-    ...series,
-    [market]: noteBlock(series[market] || {}, trade.price, trade.height),
-  };
+  return changed ? { ...book, ticks } : book;
 }

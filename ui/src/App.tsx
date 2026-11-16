@@ -66,7 +66,7 @@ export function App() {
         onSelect={data.setSelected}
         last={data.prints[0]}
       />
-      <Chart market={data.selected} points={data.series[data.selected] || {}} />
+      <Chart market={data.selected} points={data.series} />
       <Ladder
         market={data.selected}
         book={book}

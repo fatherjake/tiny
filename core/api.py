@@ -73,10 +73,10 @@ def parse_tx(raw: bytes | str) -> Tx:
     return TxJson.model_validate_json(raw).root
 
 
-def block_json(height: int, block: Block) -> dict[str, object]:
+def block_json(block: Block) -> dict[str, object]:
     txs = [{"kind": tx.body.kind, "signer": tx.signer, "nonce": tx.nonce} for tx in block.txs]
     return {
-        "height": height,
+        "height": block.height,
         "hash": block.hash.hex(),
         "parent": block.parent.hex(),
         "view": block.view,
@@ -229,10 +229,8 @@ def create_app(node: Node) -> FastAPI:
         try:
             while True:
                 fresh = node.committed[seen:]
-                for offset, block in enumerate(fresh):
-                    await socket.send_json(
-                        {"type": "block", **block_json(seen + offset + 1, block)}
-                    )
+                for block in fresh:
+                    await socket.send_json({"type": "block", **block_json(block)})
                 if fresh:
                     seen += len(fresh)
                     for name in sorted(node.state.books):

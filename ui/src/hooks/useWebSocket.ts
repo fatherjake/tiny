@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 
 import type { WsMessage } from "../types";
 
@@ -11,7 +11,6 @@ function parseWs(data: string): WsMessage | null {
   }
   if (typeof value !== "object" || value === null || !("type" in value))
     return null;
-  // The type tag is checked. The fields are the frames core/api.py sends.
   if (
     value.type === "block" ||
     value.type === "book" ||
@@ -27,8 +26,7 @@ export function useWebSocket(
   onMessage: (msg: WsMessage) => void,
 ): string {
   const [status, setStatus] = useState("connecting");
-  const handler = useRef(onMessage);
-  handler.current = onMessage;
+  const handle = useEffectEvent(onMessage);
   useEffect(() => {
     let ws: WebSocket | null = null;
     let timer = 0;
@@ -43,11 +41,15 @@ export function useWebSocket(
         setStatus("live");
       };
       ws.onmessage = (ev) => {
+        const msg = parseWs(String(ev.data));
+        if (!msg) {
+          console.warn("ws: dropped unrecognised frame", ev.data);
+          return;
+        }
         try {
-          const msg = parseWs(String(ev.data));
-          if (msg) handler.current(msg);
-        } catch {
-          /* ignore a bad frame */
+          handle(msg);
+        } catch (err) {
+          reportError(err);
         }
       };
       ws.onclose = () => {

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import sqlite3
@@ -5,7 +6,9 @@ import threading
 import time
 
 import pytest
+from fastapi import WebSocketDisconnect
 
+from core.api import create_app
 from core.node import Node, public_key
 from core.store import with_progress
 from core.types import USDC_SCALE
@@ -189,6 +192,41 @@ def test_restart_replays_only_the_blocks_after_the_last_snapshot(
     assert f"resumed at height {height}" in caplog.messages
     assert [node.state.height > height for node in nodes] == [True, True, True, True]
     assert len({node.state.state_root() for node in nodes}) == 1
+
+
+def test_streamed_blocks_carry_their_chain_height_after_a_snapshot_restart(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setattr("core.node.SNAPSHOT_EVERY", 5)
+    db = str(tmp_path / "sim.sqlite")
+    net, nodes, _funded = build(4, (0, 0), 0.0, seed=0, traders=0, db=db)
+    wall_clock(nodes)
+    net.run_for(1_000)
+    assert nodes[0].state.height > 5
+    nodes[0].store.close()
+    net2, nodes2, _funded = build(4, (0, 0), 0.0, seed=0, traders=0, db=db)
+    frames: list[dict[str, object]] = []
+
+    class Socket:
+        async def accept(self) -> None:
+            pass
+
+        async def send_json(self, frame: dict[str, object]) -> None:
+            if frame["type"] == "block":
+                frames.append(frame)
+                raise WebSocketDisconnect()
+
+    async def commit_more(_seconds: float) -> None:
+        net2.run_for(200)
+
+    monkeypatch.setattr("core.api.asyncio.sleep", commit_more)
+    app = create_app(nodes2[0])
+    stream = next(route.endpoint for route in app.routes if getattr(route, "path", "") == "/ws")
+    asyncio.run(stream(Socket()))
+    nodes2[0].store.close()
+    by_hash = {block.hash.hex(): block.height for block in nodes2[0].committed}
+    assert frames, "a block committed while the socket was open"
+    assert frames[0]["height"] == by_hash[str(frames[0]["hash"])]
 
 
 def test_restart_from_a_snapshot_matches_a_full_replay(tmp_path, monkeypatch) -> None:
