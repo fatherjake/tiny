@@ -195,17 +195,7 @@ export function Chart({ market, trader, picked }: Props) {
     const key = market + ":" + span + ":" + (count > 0);
     if (fitted.current !== key) {
       fitted.current = key;
-      const last =
-        candles && candles.length > 0 ? candles[candles.length - 1].time : null;
-      if (!ticks && last != null) {
-        plot.chart.priceScale("right").applyOptions({ autoScale: true });
-        plot.chart.timeScale().setVisibleRange({
-          from: (last - WINDOW_S) as UTCTimestamp,
-          to: last as UTCTimestamp,
-        });
-      } else if (count > 0) {
-        plot.chart.timeScale().fitContent();
-      }
+      fitView(plot, span, points);
     }
   }, [market, points, span]);
 
@@ -227,6 +217,12 @@ export function Chart({ market, trader, picked }: Props) {
         >
           tick
         </button>
+        <button
+          type="button"
+          onClick={() => api.current && fitView(api.current, span, points)}
+        >
+          recenter
+        </button>
         <span>{shown == null ? "no price" : dollars(shown)}</span>
         <a href="https://www.tradingview.com/" target="_blank" rel="noreferrer">
           TradingView
@@ -239,6 +235,21 @@ export function Chart({ market, trader, picked }: Props) {
       </div>
     </section>
   );
+}
+
+function fitView(plot: Plot, span: Span, points: Series): void {
+  const candles = points.bars;
+  const last =
+    candles && candles.length > 0 ? candles[candles.length - 1].time : null;
+  plot.chart.priceScale("right").applyOptions({ autoScale: true });
+  if (span === "1m" && last != null) {
+    plot.chart.timeScale().setVisibleRange({
+      from: (last - WINDOW_S) as UTCTimestamp,
+      to: last as UTCTimestamp,
+    });
+  } else if ((span === "tick" ? points.ticks : candles)?.length) {
+    plot.chart.timeScale().fitContent();
+  }
 }
 
 function dollars(price: number): string {
