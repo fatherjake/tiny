@@ -9,6 +9,7 @@ from typing import assert_never
 
 TxBody = PlaceOrder | CancelOrder | SetOraclePrice | Deposit | Withdraw
 
+
 def apply(self, body: TxBody) -> None:
     match body:
         case PlaceOrder(order=o):
@@ -38,6 +39,7 @@ def on_vote(self, v: Vote) -> None:
                 self.votes.setdefault(v.block_hash, {})[v.voter] = v.sig
                 if len(self.votes[v.block_hash]) >= self.quorum:
                     self.form_qc(v.block_hash)
+
 
 # Do: flat, 7 lines, reads top to bottom
 def on_vote(self, v: Vote) -> None:
