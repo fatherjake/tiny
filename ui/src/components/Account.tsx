@@ -1,9 +1,9 @@
+import { useMarkets } from "../hooks/useMarket";
 import { SCALE, bi, fmtSign, usd, usdSign } from "../lib/scale";
-import type { AccountView, MarketInfo, Position, Scaled } from "../types";
+import type { AccountView, Position, Scaled } from "../types";
 
 type Props = {
   account: AccountView | null;
-  markets: MarketInfo[];
   onClose: (pos: Position) => void;
 };
 
@@ -23,7 +23,8 @@ function upnl(pos: Position, mark: Scaled | null | undefined): bigint | null {
   return size > 0n ? notional - entry : entry - notional;
 }
 
-export function Account({ account, markets, onClose }: Props) {
+export function Account({ account, onClose }: Props) {
+  const markets = useMarkets();
   const positions = Object.values(account?.positions ?? {}).sort((a, b) =>
     String(a.market).localeCompare(String(b.market)),
   );

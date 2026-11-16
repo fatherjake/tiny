@@ -3,6 +3,7 @@ import { queryOptions } from "@tanstack/react-query";
 import { readJson } from "./api";
 import { applyCandles } from "./series";
 import type {
+  BlockMsg,
   Depth,
   FundingRow,
   MarketInfo,
@@ -24,6 +25,17 @@ export const marketKeys = {
   candles: (market: string) => ["market", "candles", market] as const,
   funding: (market: string) => ["market", "funding", market] as const,
 };
+
+// Filled only by block frames, so there is nothing to fetch. It sits outside
+// the "market" prefix so a resync keeps it, and is never collected while the
+// Blocks tab is closed.
+export const feedQuery = queryOptions({
+  queryKey: ["stream", "feed"] as const,
+  queryFn: (): BlockMsg[] => [],
+  initialData: [] as BlockMsg[],
+  staleTime: Infinity,
+  gcTime: Infinity,
+});
 
 export const TICK_TRADES = 2_000;
 const PAGE = 500;

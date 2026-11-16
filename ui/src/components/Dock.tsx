@@ -1,11 +1,10 @@
-import type {
-  AccountView,
-  MarketInfo,
-  OpenOrder,
-  Position,
-  StoredOrder,
-  StoredTrade,
-} from "../types";
+import {
+  useAccount,
+  useFills,
+  useOpenOrders,
+  useOrderHistory,
+} from "../hooks/useAccount";
+import type { OpenOrder, Position } from "../types";
 import { Account } from "./Account";
 import { Fills, OrderHistory } from "./History";
 import { OpenOrders } from "./OpenOrders";
@@ -16,13 +15,9 @@ export type DockTab = (typeof DOCK_TABS)[number];
 type Props = {
   tab: DockTab;
   setTab: (tab: DockTab) => void;
-  account: AccountView | null;
-  markets: MarketInfo[];
-  orders: OpenOrder[];
+  trader: string;
   onCancel: (order: OpenOrder) => void;
   onClose: (pos: Position) => void;
-  fills: StoredTrade[];
-  history: StoredOrder[];
   // Called with the height the dock should take, from where its top edge is dragged to.
   onResize: (height: number) => void;
 };
@@ -30,13 +25,9 @@ type Props = {
 export function Dock({
   tab,
   setTab,
-  account,
-  markets,
-  orders,
+  trader,
   onCancel,
   onClose,
-  fills,
-  history,
   onResize,
 }: Props) {
   return (
@@ -65,30 +56,59 @@ export function Dock({
         ))}
       </div>
       <div className="pane">
-        {pane(tab, account, markets, orders, onCancel, onClose, fills, history)}
+        <Pane tab={tab} trader={trader} onCancel={onCancel} onClose={onClose} />
       </div>
     </section>
   );
 }
 
-function pane(
-  tab: DockTab,
-  account: AccountView | null,
-  markets: MarketInfo[],
-  orders: OpenOrder[],
-  onCancel: (order: OpenOrder) => void,
-  onClose: (pos: Position) => void,
-  fills: StoredTrade[],
-  history: StoredOrder[],
-) {
+function Pane({
+  tab,
+  trader,
+  onCancel,
+  onClose,
+}: {
+  tab: DockTab;
+  trader: string;
+  onCancel: (order: OpenOrder) => void;
+  onClose: (pos: Position) => void;
+}) {
   switch (tab) {
     case "positions":
-      return <Account account={account} markets={markets} onClose={onClose} />;
+      return <PositionsPane trader={trader} onClose={onClose} />;
     case "orders":
-      return <OpenOrders orders={orders} onCancel={onCancel} />;
+      return <OrdersPane trader={trader} onCancel={onCancel} />;
     case "fills":
-      return <Fills rows={fills} />;
+      return <FillsPane trader={trader} />;
     case "history":
-      return <OrderHistory orders={history} />;
+      return <HistoryPane trader={trader} />;
   }
+}
+
+function PositionsPane({
+  trader,
+  onClose,
+}: {
+  trader: string;
+  onClose: (pos: Position) => void;
+}) {
+  return <Account account={useAccount(trader)} onClose={onClose} />;
+}
+
+function OrdersPane({
+  trader,
+  onCancel,
+}: {
+  trader: string;
+  onCancel: (order: OpenOrder) => void;
+}) {
+  return <OpenOrders orders={useOpenOrders(trader)} onCancel={onCancel} />;
+}
+
+function FillsPane({ trader }: { trader: string }) {
+  return <Fills rows={useFills(trader)} />;
+}
+
+function HistoryPane({ trader }: { trader: string }) {
+  return <OrderHistory orders={useOrderHistory(trader)} />;
 }

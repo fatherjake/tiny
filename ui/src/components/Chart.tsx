@@ -12,6 +12,7 @@ import {
   createChart,
 } from "lightweight-charts";
 
+import { useSeries } from "../hooks/useMarket";
 import type { Series } from "../types";
 
 type Span = "1m" | "tick";
@@ -30,10 +31,10 @@ type Plot = {
 
 type Props = {
   market: string;
-  points: Series;
 };
 
-export function Chart({ market, points }: Props) {
+export function Chart({ market }: Props) {
+  const points = useSeries(market);
   const host = useRef<HTMLDivElement>(null);
   const api = useRef<Plot | null>(null);
   const [span, setSpan] = useState<Span>("1m");

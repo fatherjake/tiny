@@ -1,12 +1,11 @@
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 
+import { useAccount } from "../hooks/useAccount";
 import { shorten, usd } from "../lib/scale";
-import type { AccountView } from "../types";
 
 type Props = {
   wallet: string | undefined;
   trader: string;
-  account: AccountView | null;
   leverage: number | null;
   error: string;
   canSign: boolean;
@@ -17,13 +16,13 @@ type Props = {
 export function Wallet({
   wallet,
   trader,
-  account,
   leverage,
   error,
   canSign,
   signing,
   onSign,
 }: Props) {
+  const account = useAccount(trader);
   return (
     <div className="pad">
       <ConnectButton.Custom>
