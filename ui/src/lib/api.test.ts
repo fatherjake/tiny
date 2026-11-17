@@ -165,15 +165,12 @@ describe("signAndPost", () => {
     );
   });
 
-  it.fails(
-    "does not print undefined for a 422 item without a message",
-    async () => {
-      const detail = [{ loc: ["body", "price"] }];
-      expect((await failWith(422, JSON.stringify({ detail }))).message).toBe(
-        "body.price",
-      );
-    },
-  );
+  it("does not print undefined for a 422 item without a message", async () => {
+    const detail = [{ loc: ["body", "price"] }];
+    expect((await failWith(422, JSON.stringify({ detail }))).message).toBe(
+      "body.price",
+    );
+  });
 
   it("reports any string detail verbatim for any failing status", async () => {
     await fc.assert(
