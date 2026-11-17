@@ -1,7 +1,7 @@
 import { queryOptions } from "@tanstack/react-query";
 
 import { readJson } from "./api";
-import { applyCandles, foldTrades } from "./series";
+import { foldTrades, toBars } from "./series";
 import type {
   BlockMsg,
   Depth,
@@ -32,7 +32,7 @@ export const feedQuery = queryOptions({
   gcTime: Infinity,
 });
 
-export const TICK_TRADES = 2_000;
+export const MAX_TRADES = 500;
 export const INTERVAL_MS = {
   "1s": 1_000,
   "3s": 3_000,
@@ -41,7 +41,6 @@ export const INTERVAL_MS = {
   "5m": 300_000,
 } as const;
 export type Interval = keyof typeof INTERVAL_MS;
-const PAGE = 500;
 
 async function getJson<T>(url: string, signal: AbortSignal): Promise<T> {
   const res = await fetch(url, { signal });
@@ -104,23 +103,10 @@ export const tradesQuery = (market: string) =>
   queryOptions({
     queryKey: marketKeys.trades(market),
     queryFn: async ({ signal }) => {
-      const rows: StoredTrade[] = [];
-      let cursor: StoredTrade | undefined;
-      while (rows.length < TICK_TRADES) {
-        const query = new URLSearchParams({ limit: String(PAGE) });
-        if (cursor) {
-          query.set("before_height", String(cursor.height));
-          query.set("before_tx", String(cursor.tx_index));
-          query.set("before_id", String(cursor.id));
-        }
-        const page = await getJson<StoredTrade[]>(
-          "/trades/" + encodeURIComponent(market) + "?" + query,
-          signal,
-        );
-        rows.push(...page);
-        if (page.length < PAGE) break;
-        cursor = page[page.length - 1];
-      }
+      const rows = await getJson<StoredTrade[]>(
+        "/trades/" + encodeURIComponent(market) + "?limit=" + MAX_TRADES,
+        signal,
+      );
       return rows.map(asPrint);
     },
     staleTime: Infinity,
@@ -137,7 +123,7 @@ export const candlesQuery = (market: string, interval: Interval) =>
       const trades =
         client.getQueryData<Trade[]>(marketKeys.trades(market)) ?? [];
       return foldTrades(
-        applyCandles({}, rows),
+        toBars(rows),
         [...trades].reverse(),
         INTERVAL_MS[interval],
       );

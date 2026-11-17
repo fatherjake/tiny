@@ -1,40 +1,33 @@
 import type { Time } from "lightweight-charts";
 
 import { INTERVAL_MS, type Interval } from "../lib/marketQueries";
-import type { Series } from "../types";
+import type { Candle } from "../types";
 
-export type Span = Interval | "tick";
-
-export const SPANS: Span[] = ["1s", "3s", "15s", "1m", "5m", "tick"];
+export const INTERVALS = Object.keys(INTERVAL_MS) as Interval[];
 export const WINDOW_BARS = 30;
 
-export type FitTarget = { from: number; to: number } | "content" | null;
-
-export function fitTarget(span: Span, points: Series): FitTarget {
-  const candles = points.bars;
-  const last =
-    candles && candles.length > 0 ? candles[candles.length - 1].time : null;
-  if (span !== "tick" && last != null) {
-    return {
-      from: last - (WINDOW_BARS * INTERVAL_MS[span]) / 1000,
-      to: last,
-    };
-  }
-  if ((span === "tick" ? points.ticks : candles)?.length) return "content";
-  return null;
+export function fitTarget(
+  interval: Interval,
+  bars: Candle[],
+): { from: number; to: number } | null {
+  const last = bars.at(-1)?.time;
+  if (last == null) return null;
+  return {
+    from: last - (WINDOW_BARS * INTERVAL_MS[interval]) / 1000,
+    to: last,
+  };
 }
 
 export function dollars(price: number): string {
   return price.toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
 
-export function axisLabel(span: Span, time: Time): string {
+export function axisLabel(interval: Interval, time: Time): string {
   if (typeof time !== "number") return "";
-  if (span === "tick") return String(time);
   const date = new Date(time * 1000);
   const pad = (part: number) => String(part).padStart(2, "0");
   const clock = pad(date.getHours()) + ":" + pad(date.getMinutes());
-  return INTERVAL_MS[span] < 60_000
+  return INTERVAL_MS[interval] < 60_000
     ? clock + ":" + pad(date.getSeconds())
     : clock;
 }

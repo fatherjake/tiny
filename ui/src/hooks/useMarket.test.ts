@@ -14,7 +14,7 @@ import {
   useMarket,
   useMarkets,
   useMarketsSelect,
-  useSeries,
+  useCandles,
   useStatus,
   useTrades,
 } from "./useMarket";
@@ -216,8 +216,8 @@ describe("useTrades", () => {
   });
 });
 
-describe("useSeries", () => {
-  it("combines candles with trade ticks", async () => {
+describe("useCandles", () => {
+  it("is undefined until the bars load, then returns them", async () => {
     routes["/candles/BTC?interval=5m"] = [
       {
         ts: 60_000,
@@ -227,49 +227,21 @@ describe("useSeries", () => {
         close: "2000000",
       },
     ];
-    routes["/trades/BTC?limit=500"] = [
-      stored(2, 9, "2500000"),
-      stored(1, 8, "2000000"),
-    ];
-    const { result } = render(() => useSeries("BTC", "5m", true));
-    expect(result.current).toEqual({});
+    const { result } = render(() => useCandles("BTC", "5m"));
+    expect(result.current).toBe(undefined);
     await waitFor(() =>
-      expect(result.current).toEqual({
-        bars: [{ time: 60, open: 1, high: 3, low: 0.5, close: 2 }],
-        ticks: [
-          { time: 8, value: 2 },
-          { time: 9, value: 2.5 },
-        ],
-      }),
+      expect(result.current).toEqual([
+        { time: 60, open: 1, high: 3, low: 0.5, close: 2 },
+      ]),
     );
+    expect(asked).toEqual(["/candles/BTC?interval=5m"]);
   });
 
-  it("keeps the same series object across renders when nothing changed", async () => {
-    const { result, rerender } = render(() => useSeries("", "1m", true));
-    const first = result.current;
-    rerender();
-    expect(result.current).toBe(first);
-    expect(first).toEqual({});
+  it("asks nothing without a market", async () => {
+    const { result } = render(() => useCandles("", "1m"));
     await new Promise((r) => setTimeout(r, 10));
+    expect(result.current).toBe(undefined);
     expect(asked).toEqual([]);
-  });
-});
-
-describe("useSeries without ticks", () => {
-  it("keeps trades loaded but never re-renders for them", async () => {
-    routes["/candles/BTC?interval=1m"] = [];
-    routes["/trades/BTC?limit=500"] = [stored(1, 8, "2000000")];
-    let renders = 0;
-    const { result } = render(() => {
-      renders++;
-      return useSeries("BTC", "1m", false);
-    });
-    await waitFor(() => expect(result.current).toEqual({ bars: [] }));
-    await waitFor(() => expect(asked).toContain("/trades/BTC?limit=500"));
-    const settled = renders;
-    await new Promise((r) => setTimeout(r, 20));
-    expect(renders).toBe(settled);
-    expect(result.current).toEqual({ bars: [] });
   });
 });
 

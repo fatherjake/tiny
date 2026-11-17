@@ -52,17 +52,6 @@ const trade = (id: number): StoredTrade => ({
   ts: 1_700_000_000_000 + id,
 });
 
-function tradeServer(total: number) {
-  const all = Array.from({ length: total }, (_, i) => trade(total - i));
-  return (url: string): Response => {
-    const query = new URL(url, "http://x").searchParams;
-    const limit = Number(query.get("limit"));
-    const before = query.get("before_id");
-    const from = before == null ? 0 : total - Number(before) + 1;
-    return Response.json(all.slice(from, from + limit));
-  };
-}
-
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -181,7 +170,7 @@ describe("booksQuery", () => {
 });
 
 describe("tradesQuery", () => {
-  it("returns a short first page as prints", async () => {
+  it("loads the latest 500 trades as prints", async () => {
     const urls = serve(() => Response.json([trade(5)]));
     const qc = client();
 
@@ -199,48 +188,6 @@ describe("tradesQuery", () => {
         size: 1_000_000,
       },
     ]);
-  });
-
-  it("pages backwards from the last row of each full page", async () => {
-    const urls = serve(tradeServer(1200));
-
-    const prints = await client().query(tradesQuery("BTC"));
-
-    expect(urls).toEqual([
-      "/trades/BTC?limit=500",
-      "/trades/BTC?limit=500&before_height=1233&before_tx=2&before_id=701",
-      "/trades/BTC?limit=500&before_height=1067&before_tx=0&before_id=201",
-    ]);
-    expect(prints).toHaveLength(1200);
-    expect(prints[0].seq).toBe(1200);
-    expect(prints[1199].seq).toBe(1);
-  });
-
-  it("stops at two thousand trades", async () => {
-    const urls = serve(tradeServer(5000));
-
-    const prints = await client().query(tradesQuery("BTC"));
-
-    expect(urls).toHaveLength(4);
-    expect(prints).toHaveLength(2000);
-    expect(prints.at(-1)?.seq).toBe(3001);
-  });
-
-  it("returns the newest trades, newest first, without gaps or repeats", async () => {
-    await fc.assert(
-      fc.asyncProperty(fc.integer({ min: 0, max: 2600 }), async (total) => {
-        const urls = serve(tradeServer(total));
-
-        const prints = await client().query(tradesQuery("BTC"));
-
-        const kept = Math.min(total, 2000);
-        expect(prints.map((row) => row.seq)).toEqual(
-          Array.from({ length: kept }, (_, i) => total - i),
-        );
-        expect(urls).toHaveLength(Math.min(Math.floor(total / 500) + 1, 4));
-      }),
-      { numRuns: 40 },
-    );
   });
 
   it("fails with the URL and status", async () => {
@@ -269,20 +216,18 @@ describe("candlesQuery", () => {
     await qc.query(candlesQuery("BTC/USD", "1m"));
 
     expect(urls).toEqual(["/candles/BTC%2FUSD?interval=1m"]);
-    expect(qc.getQueryData(["market", "candles", "BTC/USD", "1m"])).toEqual({
-      bars: [{ time: 1_700_000_060, open: 2, high: 2, low: 2, close: 2 }],
-    });
+    expect(qc.getQueryData(["market", "candles", "BTC/USD", "1m"])).toEqual([
+      { time: 1_700_000_060, open: 2, high: 2, low: 2, close: 2 },
+    ]);
   });
 
   it("replaces cached bars with the server's full series on refetch", async () => {
     const qc = client();
     const key = candlesQuery("BTC", "5m").queryKey;
-    qc.setQueryData(key, {
-      bars: [
-        { time: 1_700_000_000, open: 1, high: 1, low: 1, close: 1 },
-        { time: 1_700_000_300, open: 2, high: 9, low: 2, close: 2 },
-      ],
-    });
+    qc.setQueryData(key, [
+      { time: 1_700_000_000, open: 1, high: 1, low: 1, close: 1 },
+      { time: 1_700_000_300, open: 2, high: 9, low: 2, close: 2 },
+    ]);
     const urls = serve(() =>
       Response.json([candle(1_700_000_300_000, 3_000_000)]),
     );
@@ -290,9 +235,9 @@ describe("candlesQuery", () => {
     await qc.query({ ...candlesQuery("BTC", "5m"), staleTime: 0 });
 
     expect(urls).toEqual(["/candles/BTC?interval=5m"]);
-    expect(qc.getQueryData(key)).toEqual({
-      bars: [{ time: 1_700_000_300, open: 3, high: 3, low: 3, close: 3 }],
-    });
+    expect(qc.getQueryData(key)).toEqual([
+      { time: 1_700_000_300, open: 3, high: 3, low: 3, close: 3 },
+    ]);
   });
 
   it("folds cached trades from the server's last bar onward", async () => {
@@ -313,9 +258,9 @@ describe("candlesQuery", () => {
     ]);
     serve(() => Response.json([candle(1_700_000_040_000, 2_000_000)]));
 
-    const series = await qc.query(candlesQuery("BTC", "1m"));
+    const bars = await qc.query(candlesQuery("BTC", "1m"));
 
-    expect(series.bars).toEqual([
+    expect(bars).toEqual([
       { time: 1_700_000_040, open: 2, high: 3, low: 2, close: 3 },
       { time: 1_700_000_100, open: 1.5, high: 1.5, low: 1.5, close: 1.5 },
     ]);
@@ -345,7 +290,7 @@ describe("candlesQuery", () => {
             );
             await qc.query(query);
           }
-          const bars = qc.getQueryData(query.queryKey)?.bars ?? [];
+          const bars = qc.getQueryData(query.queryKey) ?? [];
           for (let i = 1; i < bars.length; i++) {
             expect(bars[i].time).toBeGreaterThan(bars[i - 1].time);
           }

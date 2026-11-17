@@ -1,4 +1,4 @@
-import type { Candle, Depth, Scaled, Series } from "../types";
+import type { Candle, Depth, Scaled } from "../types";
 import { bi } from "./scale";
 
 export type Spread = { spread: bigint | null; mid: bigint | null; pct: string };
@@ -35,38 +35,30 @@ export type CandleRow = {
   close: Scaled;
 };
 
-export function applyCandles(book: Series, rows: CandleRow[]): Series {
-  const ordered = [...rows].sort((a, b) => Number(a.ts) - Number(b.ts));
-  if (ordered.length === 0) return book.bars ? book : { ...book, bars: [] };
-  const from = Math.floor(Number(ordered[0].ts) / 1000);
-  const bars: NonNullable<Series["bars"]> = (book.bars ?? []).filter(
-    (bar) => bar.time < from,
-  );
-  for (const row of ordered) {
-    const time = Math.floor(Number(row.ts) / 1000);
+export function toBars(rows: CandleRow[]): Candle[] {
+  const bars: Candle[] = [];
+  for (const row of [...rows].sort((a, b) => Number(a.ts) - Number(b.ts))) {
     const bar = {
-      time,
+      time: Math.floor(Number(row.ts) / 1000),
       open: Number(bi(row.open)) / 1e6,
       high: Number(bi(row.high)) / 1e6,
       low: Number(bi(row.low)) / 1e6,
       close: Number(bi(row.close)) / 1e6,
     };
     const last = lastOf(bars);
-    if (last && time === last.time) bars[bars.length - 1] = bar;
+    if (last && bar.time === last.time) bars[bars.length - 1] = bar;
     else bars.push(bar);
   }
-  return { ...book, bars };
+  return bars;
 }
 
 type Print = { timestamp_ms: number; price: Scaled };
 
 export function foldTrades(
-  book: Series,
+  bars: Candle[],
   trades: Print[],
   width: number,
-): Series {
-  const bars = book.bars;
-  if (!bars) return book;
+): Candle[] {
   let next: Candle[] | null = null;
   for (const trade of trades) {
     const time = (Math.floor(trade.timestamp_ms / width) * width) / 1000;
@@ -85,39 +77,5 @@ export function foldTrades(
       next.push({ time, open: price, high: price, low: price, close: price });
     }
   }
-  return next ? { ...book, bars: next } : book;
-}
-
-type SeedRow = { height: number; price?: Scaled | null };
-
-export function seed(book: Series, rows: SeedRow[]): Series {
-  const ticks = [...(book.ticks ?? [])];
-  let changed = false;
-  for (let i = rows.length - 1; i >= 0; i--) {
-    const { height, price } = rows[i];
-    if (price == null) continue;
-    const last = lastOf(ticks);
-    if (last && height < last.time) continue;
-    const point = { time: height, value: Number(bi(price)) / 1e6 };
-    if (last && last.time === height) ticks[ticks.length - 1] = point;
-    else ticks.push(point);
-    changed = true;
-  }
-  return changed ? { ...book, ticks } : book;
-}
-
-export const MAX_TICKS = 10_000;
-
-type Tick = NonNullable<Series["ticks"]>[number];
-
-export function extendTicks(
-  prev: Tick[],
-  rows: SeedRow[],
-  max = MAX_TICKS,
-): Tick[] {
-  if (rows.length === 0) return prev;
-  const last = prev[prev.length - 1];
-  const base = last && rows[0].height < last.time ? [] : prev;
-  const ticks = seed({ ticks: base }, rows).ticks ?? base;
-  return ticks.length > max ? ticks.slice(-max) : ticks;
+  return next ?? bars;
 }
