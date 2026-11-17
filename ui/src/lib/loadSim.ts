@@ -196,7 +196,6 @@ export class LoadSim {
   }
 
   private drain(): void {
-    if (this.head >= this.queue.length) return;
     const msg = this.queue[this.head++];
     if (this.head > 4096 && this.head * 2 > this.queue.length) {
       this.queue = this.queue.slice(this.head);

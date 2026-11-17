@@ -10,6 +10,7 @@ import {
   type Drawn,
   fitTarget,
   planDraw,
+  sameRow,
 } from "./Chart.utils";
 
 const bar = (time: number): Candle => ({
@@ -116,6 +117,38 @@ describe("axisLabel", () => {
   });
 });
 
+describe("sameRow", () => {
+  it("matches the same object or two with equal fields", () => {
+    const row = { time: 1, close: 2 };
+    expect(sameRow(row, row)).toBe(true);
+    expect(sameRow(undefined, undefined)).toBe(true);
+    expect(sameRow({ time: 1, close: 2 }, { close: 2, time: 1 })).toBe(true);
+  });
+
+  it("differs when one side is missing, a field differs or one is extra", () => {
+    expect(sameRow({ time: 1 }, undefined)).toBe(false);
+    expect(sameRow(undefined, { time: 1 })).toBe(false);
+    expect(sameRow({ time: 1, close: 2 }, { time: 1, close: 3 })).toBe(false);
+    expect(sameRow({ time: 1 }, { time: 1, close: 2 })).toBe(false);
+  });
+
+  it("is a symmetric shallow equality for any flat record", () => {
+    const record = fc.dictionary(
+      fc.string({ maxLength: 3 }),
+      fc.oneof(fc.integer(), fc.string({ maxLength: 3 })),
+    );
+    fc.assert(
+      fc.property(record, record, (a, b) => {
+        expect(sameRow(a, { ...a })).toBe(true);
+        expect(sameRow(a, b)).toBe(sameRow(b, a));
+        expect(sameRow(a, b)).toBe(
+          JSON.stringify(sortKeys(a)) === JSON.stringify(sortKeys(b)),
+        );
+      }),
+    );
+  });
+});
+
 describe("planDraw", () => {
   const at = (...times: number[]) => times.map((time) => ({ time }));
   const none: Drawn = { key: "", last: null, count: 0 };
@@ -156,3 +189,7 @@ describe("planDraw", () => {
     expect(planDraw(long, "BTC:1s", at(1, 2)).kind).toBe("reset");
   });
 });
+
+function sortKeys(row: Record<string, unknown>): [string, unknown][] {
+  return Object.entries(row).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+}
