@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useAccount, useSignMessage } from "wagmi";
 
+import { devSigner } from "../lib/devSigner";
 import { loadSigner, type Signer, unlock } from "../lib/keystore";
 import { keyFromSignature, keyMessage } from "../lib/wallet";
 
@@ -23,6 +24,18 @@ export function useTraderSession() {
     setKey(null);
     setError("");
     setSigning(false);
+    const seed = import.meta.env.DEV ? import.meta.env.VITE_DEV_SEED : "";
+    if (seed) {
+      devSigner(seed).then(
+        (signer) => {
+          if (current === token.current) setKey(signer);
+        },
+        (err: unknown) => {
+          if (current === token.current) setError(message(err));
+        },
+      );
+      return;
+    }
     if (!wallet) return;
     void loadSigner(wallet).then((stored) => {
       if (stored && current === token.current) setKey(stored);

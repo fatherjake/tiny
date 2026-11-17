@@ -60,7 +60,10 @@ beforeEach(() => {
   store.load = () => Promise.resolve(null);
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllEnvs();
+});
 
 const session = () => renderHook(() => useTraderSession());
 
@@ -243,5 +246,52 @@ describe("useTraderSession", () => {
     rerender();
     expect(result.current.key).toBe(null);
     expect(result.current.canSign).toBe(false);
+  });
+
+  it("trades with the dev seed without any wallet", async () => {
+    vi.stubEnv("VITE_DEV_SEED", "00".repeat(31) + "2a");
+    const { result } = session();
+    await waitFor(() =>
+      expect(result.current.key?.trader).toBe(
+        "c561fa9f643fe5c60113cce9db282fde2b9e5ca5fc6b6fc0d1679bb339c9f72f",
+      ),
+    );
+    expect(result.current.wallet).toBe(undefined);
+    expect(result.current.error).toBe("");
+  });
+
+  it("keeps the dev key when a wallet connects", async () => {
+    vi.stubEnv("VITE_DEV_SEED", "00".repeat(31) + "2a");
+    store.load = async () => fakeSigner("stored");
+    const { result, rerender } = session();
+    connect("0xAbC");
+    rerender();
+    await waitFor(() =>
+      expect(result.current.key?.trader).toBe(
+        "c561fa9f643fe5c60113cce9db282fde2b9e5ca5fc6b6fc0d1679bb339c9f72f",
+      ),
+    );
+  });
+
+  it("reports a malformed dev seed", async () => {
+    vi.stubEnv("VITE_DEV_SEED", "nope");
+    const { result, rerender } = session();
+    connect("0xAbC");
+    rerender();
+    await waitFor(() =>
+      expect(result.current.error).toBe(
+        "VITE_DEV_SEED must be 64 hex characters",
+      ),
+    );
+    expect(result.current.key).toBe(null);
+  });
+
+  it("ignores the dev seed outside dev builds", async () => {
+    vi.stubEnv("DEV", false);
+    vi.stubEnv("VITE_DEV_SEED", "00".repeat(31) + "2a");
+    connect("0xAbC");
+    store.load = async () => fakeSigner("stored");
+    const { result } = session();
+    await waitFor(() => expect(result.current.key?.trader).toBe("stored"));
   });
 });
