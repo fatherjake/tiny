@@ -37,6 +37,21 @@ Vite serves the UI and proxies `/trades`, `/candles`, `/ws`, and the other API r
 
 To trade from a wallet, connect it and press `key from wallet`. The wallet signs a fixed message and its SHA-256 hash becomes your ed25519 trading key, so the same wallet always opens the same tiny account. Browser-extension wallets work as is. QR and mobile wallets need a WalletConnect project id in `VITE_WALLETCONNECT_PROJECT_ID`.
 
+For local testing without a wallet, set `VITE_DEV_SEED` to a 64-character hex ed25519 seed and the dev server trades as that key. Production builds ignore it. `TINY_API` points the proxy at a sim on another port.
+
+## Explore the order form with Bombadil
+
+[Bombadil](https://antithesishq.github.io/bombadil/) clicks, types and presses shortcuts in the order form and checks the properties in `ui/bombadil/orderform.ts`. Run it against a throwaway sim with a funded dev trader:
+
+```
+uv run python -m sim --api-port 8765 --db "" --bots 2
+uv run python -m sim.fund c561fa9f643fe5c60113cce9db282fde2b9e5ca5fc6b6fc0d1679bb339c9f72f --usdc 100000 --api http://127.0.0.1:8765
+cd ui && TINY_API=http://127.0.0.1:8765 VITE_DEV_SEED=000000000000000000000000000000000000000000000000000000000000002a npm run dev
+cd ui && npm run bombadil
+```
+
+Exit code 2 means a property failed. `npx bombadil browser inspect ../.qa/bombadil/orderform` opens the trace.
+
 ## Run the tests
 
 ```

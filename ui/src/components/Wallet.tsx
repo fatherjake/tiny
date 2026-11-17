@@ -60,10 +60,10 @@ export function Wallet({
           >
             {signing ? "Sign in your wallet" : "Enable trading"}
           </button>
-          {error ? <div className="error stamp">{error}</div> : null}
         </>
       ) : null}
-      {wallet && trader ? (
+      {error && !trader ? <div className="error stamp">{error}</div> : null}
+      {trader ? (
         <>
           <div className="row spread">
             <span>trader</span>

@@ -378,6 +378,44 @@ const funded = {
   account_value: 1_000_000_000n,
 };
 
+describe("previewOrder at a zero limit price", () => {
+  it("offers no max and flags the size instead of throwing", () => {
+    const preview = previewOrder(
+      draft({ price: "0", usd: "6" }),
+      perp,
+      [perp],
+      null,
+      funded,
+      [],
+    );
+    expect(preview.maxUsd).toBe(null);
+    expect(preview.size).toBe(0n);
+    expect(preview.problem).toBe("size is below one lot");
+  });
+
+  it("never throws for any typed price or size", () => {
+    const typed = fc.stringMatching(/^[0-9]{0,6}(\.[0-9]{0,7})?$/);
+    fc.assert(
+      fc.property(
+        typed,
+        typed,
+        fc.constantFrom("buy", "sell"),
+        (price, usd, side) => {
+          const preview = previewOrder(
+            draft({ price, usd, side }),
+            perp,
+            [perp],
+            null,
+            funded,
+            [],
+          );
+          expect(preview.maxUsd == null || preview.maxUsd >= 0n).toBe(true);
+        },
+      ),
+    );
+  });
+});
+
 describe("marketPrice edges", () => {
   it("returns null for a missing or non-positive touch", () => {
     expect(marketPrice("buy", { best_bid: 5n, best_ask: null })).toBe(null);
