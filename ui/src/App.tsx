@@ -11,7 +11,7 @@ import { Header } from "./components/Header";
 import { Ladder } from "./components/Ladder";
 import { OrderForm } from "./components/OrderForm";
 import { Wallet } from "./components/Wallet";
-import { useMarketsSelect } from "./hooks/useMarket";
+import { useLoadTrades, useMarketsSelect } from "./hooks/useMarket";
 import { useMarketStream } from "./hooks/useMarketStream";
 import { useOrderActions } from "./hooks/useOrderActions";
 import { useTraderSession } from "./hooks/useTraderSession";
@@ -32,6 +32,7 @@ export function App() {
   const [chosen, setChosen] = useState("");
   const first = useMarketsSelect(firstName) ?? "";
   const selected = chosen || first;
+  useLoadTrades(selected);
   const leverage =
     useMarketsSelect(
       (markets) => markets.find((m) => m.name === selected)?.max_leverage,

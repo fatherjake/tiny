@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import fc from "fast-check";
 import { createElement, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -15,6 +15,7 @@ import {
   useMarkets,
   useMarketsSelect,
   useCandles,
+  useLoadTrades,
   useStatus,
   useTrades,
 } from "./useMarket";
@@ -43,7 +44,7 @@ function render<T>(hook: () => T) {
   });
   const wrapper = ({ children }: { children: ReactNode }) =>
     createElement(QueryClientProvider, { client }, children);
-  return renderHook(hook, { wrapper });
+  return { ...renderHook(hook, { wrapper }), client };
 }
 
 const market = (name: string, max_leverage = 10): MarketInfo => ({
@@ -212,6 +213,29 @@ describe("useTrades", () => {
     const { result } = render(() => useTrades(""));
     await new Promise((r) => setTimeout(r, 10));
     expect(result.current).toEqual([]);
+    expect(asked).toEqual([]);
+  });
+});
+
+describe("useLoadTrades", () => {
+  it("loads the market's trades without re-rendering when they change", async () => {
+    routes["/trades/BTC?limit=500"] = [stored(1, 4, "100")];
+    let renders = 0;
+    const { client } = render(() => {
+      renders++;
+      useLoadTrades("BTC");
+    });
+    const key = ["market", "trades", "BTC"];
+    await waitFor(() => expect(client.getQueryData(key)).toHaveLength(1));
+    const settled = renders;
+    act(() => client.setQueryData(key, []));
+    expect(client.getQueryData(key)).toEqual([]);
+    expect(renders).toBe(settled);
+  });
+
+  it("asks nothing without a market", async () => {
+    render(() => useLoadTrades(""));
+    await new Promise((r) => setTimeout(r, 10));
     expect(asked).toEqual([]);
   });
 });
