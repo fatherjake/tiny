@@ -146,7 +146,7 @@ export function previewOrder(
       ? (size * sendPrice) / SCALE / BigInt(lev)
       : null;
   const maxUsd =
-    sizePrice != null && sendPrice != null
+    sizePrice != null && sendPrice != null && sendPrice > 0n
       ? (available * BigInt(lev) * sizePrice) / sendPrice
       : null;
   const pos = market ? account?.positions?.[market.name] : undefined;
