@@ -1,11 +1,10 @@
-import { useState } from "react";
-
 import { usePause } from "../hooks/usePause";
 import { positionValue } from "../lib/orders";
 import { bi, fmt, usd } from "../lib/scale";
 import type { Trade } from "../types";
 import { PausePill } from "./PausePill";
-import { nextFade, TAPE_ROWS } from "./Tape.utils";
+
+const TAPE_ROWS = 40;
 
 type Props = {
   prints: Trade[];
@@ -14,21 +13,8 @@ type Props = {
 
 export function Tape({ prints, tint = false }: Props) {
   const pause = usePause(prints);
-  const [fade, setFade] = useState(() => ({
-    rows: pause.rows,
-    seqs: new Set<number>(),
-  }));
-  if (fade.rows !== pause.rows) {
-    setFade({
-      rows: pause.rows,
-      seqs: nextFade(fade.rows, pause.rows, fade.seqs),
-    });
-  }
   const rows = pause.rows.slice(0, TAPE_ROWS).map((print) => (
-    <tr
-      key={"p" + print.seq}
-      className={fade.seqs.has(print.seq) ? "fresh" : undefined}
-    >
+    <tr key={"p" + print.seq}>
       <td className="l">{print.side}</td>
       <td className={tint ? (print.side === "buy" ? "bid" : "ask") : undefined}>
         {usd(print.price)}
