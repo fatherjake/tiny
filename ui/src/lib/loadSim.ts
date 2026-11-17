@@ -151,6 +151,9 @@ export class LoadSim {
     this.queue = [];
     this.head = 0;
     flushTrades(this.client);
+    this.client.setQueryData<Trade[]>(marketKeys.trades(this.market), (rows) =>
+      rows?.filter((trade) => trade.seq < SEQ_BASE),
+    );
     this.client.setQueryData<BlockMsg[]>(feedQuery.queryKey, (rows = []) =>
       rows.filter((block) => !block.hash.startsWith(SIM_HASH)),
     );

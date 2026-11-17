@@ -11,7 +11,7 @@ import {
   statusQuery,
   tradesQuery,
 } from "./marketQueries";
-import type { BlockMsg, MarketInfo, StoredTrade } from "../types";
+import type { BlockMsg, MarketInfo, StoredTrade, Trade } from "../types";
 
 function serve(respond: (url: string) => Response): string[] {
   const urls: string[] = [];
@@ -274,44 +274,51 @@ describe("candlesQuery", () => {
     });
   });
 
-  it("refetches from one interval before the last bar and merges", async () => {
+  it("replaces cached bars with the server's full series on refetch", async () => {
     const qc = client();
     const key = candlesQuery("BTC", "5m").queryKey;
     qc.setQueryData(key, {
-      ticks: [{ time: 9, value: 1 }],
       bars: [
         { time: 1_700_000_000, open: 1, high: 1, low: 1, close: 1 },
-        { time: 1_700_000_300, open: 2, high: 2, low: 2, close: 2 },
+        { time: 1_700_000_300, open: 2, high: 9, low: 2, close: 2 },
       ],
     });
     const urls = serve(() =>
-      Response.json([
-        candle(1_700_000_300_000, 3_000_000),
-        candle(1_700_000_600_000, 4_000_000),
-      ]),
+      Response.json([candle(1_700_000_300_000, 3_000_000)]),
     );
 
     await qc.fetchQuery({ ...candlesQuery("BTC", "5m"), staleTime: 0 });
 
-    expect(urls).toEqual(["/candles/BTC?interval=5m&start=1700000000000"]);
+    expect(urls).toEqual(["/candles/BTC?interval=5m"]);
     expect(qc.getQueryData(key)).toEqual({
-      ticks: [{ time: 9, value: 1 }],
-      bars: [
-        { time: 1_700_000_000, open: 1, high: 1, low: 1, close: 1 },
-        { time: 1_700_000_300, open: 3, high: 3, low: 3, close: 3 },
-        { time: 1_700_000_600, open: 4, high: 4, low: 4, close: 4 },
-      ],
+      bars: [{ time: 1_700_000_300, open: 3, high: 3, low: 3, close: 3 }],
     });
   });
 
-  it("refetches the whole range when cached bars are empty", async () => {
+  it("folds cached trades from the server's last bar onward", async () => {
     const qc = client();
-    qc.setQueryData(candlesQuery("BTC", "1m").queryKey, { bars: [] });
-    const urls = serve(() => Response.json([]));
+    const at = (ts: number, price: number): Trade => ({
+      seq: ts,
+      height: 1,
+      timestamp_ms: ts,
+      market: "BTC",
+      side: "buy",
+      price,
+      size: 1,
+    });
+    qc.setQueryData(tradesQuery("BTC").queryKey, [
+      at(1_700_000_110_000, 1_500_000),
+      at(1_700_000_070_000, 3_000_000),
+      at(1_699_999_990_000, 9_000_000),
+    ]);
+    serve(() => Response.json([candle(1_700_000_040_000, 2_000_000)]));
 
-    await qc.fetchQuery({ ...candlesQuery("BTC", "1m"), staleTime: 0 });
+    const series = await qc.fetchQuery(candlesQuery("BTC", "1m"));
 
-    expect(urls).toEqual(["/candles/BTC?interval=1m"]);
+    expect(series.bars).toEqual([
+      { time: 1_700_000_040, open: 2, high: 3, low: 2, close: 3 },
+      { time: 1_700_000_100, open: 1.5, high: 1.5, low: 1.5, close: 1.5 },
+    ]);
   });
 
   it("keeps bars strictly increasing across any sequence of refreshes", async () => {

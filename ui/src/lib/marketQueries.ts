@@ -1,13 +1,12 @@
 import { queryOptions } from "@tanstack/react-query";
 
 import { readJson } from "./api";
-import { applyCandles } from "./series";
+import { applyCandles, foldTrades } from "./series";
 import type {
   BlockMsg,
   Depth,
   FundingRow,
   MarketInfo,
-  Series,
   Status,
   StoredCandle,
   StoredTrade,
@@ -127,24 +126,20 @@ export const tradesQuery = (market: string) =>
 export const candlesQuery = (market: string, interval: Interval) =>
   queryOptions({
     queryKey: marketKeys.candles(market, interval),
-    queryFn: async ({ client, queryKey, signal }) => {
-      const prev = client.getQueryData<Series>(queryKey) ?? {};
-      const last = prev.bars?.at(-1);
-      const start =
-        last == null
-          ? ""
-          : "&start=" + (last.time * 1000 - INTERVAL_MS[interval]);
+    queryFn: async ({ client, signal }) => {
       const rows = await getJson<StoredCandle[]>(
-        "/candles/" +
-          encodeURIComponent(market) +
-          "?interval=" +
-          interval +
-          start,
+        "/candles/" + encodeURIComponent(market) + "?interval=" + interval,
         signal,
       );
-      return applyCandles(prev, rows);
+      const trades =
+        client.getQueryData<Trade[]>(marketKeys.trades(market)) ?? [];
+      return foldTrades(
+        applyCandles({}, rows),
+        [...trades].reverse(),
+        INTERVAL_MS[interval],
+      );
     },
-    refetchInterval: 1_000,
+    staleTime: Infinity,
   });
 
 export const fundingQuery = (market: string) =>

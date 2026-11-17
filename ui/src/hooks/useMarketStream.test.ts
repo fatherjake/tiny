@@ -241,6 +241,56 @@ describe("useMarketStream", () => {
     expect(rows?.[1999].seq).toBe(2);
   });
 
+  it("folds trades into every loaded candle series for their market", () => {
+    const { client, push } = stream();
+    const bar = (time: number, price: number) => ({
+      time,
+      open: price,
+      high: price,
+      low: price,
+      close: price,
+    });
+    const trade = (seq: number, ts: number, price: number): WsMessage => ({
+      type: "trade",
+      ...print(seq),
+      timestamp_ms: ts,
+      price: price * 1e6,
+    });
+    client.setQueryData(["market", "candles", "BTC", "1m"], {
+      bars: [bar(1_700_000_040, 5), bar(1_700_000_100, 10)],
+    });
+    client.setQueryData(["market", "candles", "BTC", "5m"], {
+      bars: [bar(1_699_999_800, 10)],
+    });
+    client.setQueryData(["market", "candles", "ETH", "1m"], {
+      bars: [bar(1_700_000_100, 7)],
+    });
+
+    push(
+      trade(1, 1_700_000_050_000, 99),
+      trade(2, 1_700_000_110_000, 12),
+      trade(3, 1_700_000_130_000, 8),
+      trade(4, 1_700_000_170_000, 11),
+    );
+
+    expect(client.getQueryData(["market", "candles", "BTC", "1m"])).toEqual({
+      bars: [
+        bar(1_700_000_040, 5),
+        { time: 1_700_000_100, open: 10, high: 12, low: 8, close: 8 },
+        { time: 1_700_000_160, open: 11, high: 11, low: 11, close: 11 },
+      ],
+    });
+    expect(client.getQueryData(["market", "candles", "BTC", "5m"])).toEqual({
+      bars: [
+        { time: 1_699_999_800, open: 10, high: 99, low: 10, close: 99 },
+        { time: 1_700_000_100, open: 12, high: 12, low: 8, close: 11 },
+      ],
+    });
+    expect(client.getQueryData(["market", "candles", "ETH", "1m"])).toEqual({
+      bars: [bar(1_700_000_100, 7)],
+    });
+  });
+
   it("resyncs markets and accounts when a block or trade is skipped", () => {
     const { client, push, stale } = stream();
     const books = ["market", "books"];

@@ -2,8 +2,22 @@ import type { QueryClient } from "@tanstack/react-query";
 
 import { accountKeys } from "./accountQueries";
 import { inclusionMs, inclusionQuery, lastBlockQuery } from "./latency";
-import { feedQuery, marketKeys, TICK_TRADES } from "./marketQueries";
-import type { BlockMsg, Depth, Status, Trade, WsMessage } from "../types";
+import {
+  feedQuery,
+  INTERVAL_MS,
+  type Interval,
+  marketKeys,
+  TICK_TRADES,
+} from "./marketQueries";
+import { foldTrades } from "./series";
+import type {
+  BlockMsg,
+  Depth,
+  Series,
+  Status,
+  Trade,
+  WsMessage,
+} from "../types";
 
 const REFRESH_MS = 250;
 const FEED_LIMIT = 50;
@@ -72,6 +86,13 @@ export function flushTrades(client: QueryClient): void {
     client.setQueryData<Trade[]>(marketKeys.trades(market), (prev) =>
       mergeTrades(prev, list),
     );
+    for (const [key, series] of client.getQueriesData<Series>({
+      queryKey: ["market", "candles", market],
+    })) {
+      if (!series) continue;
+      const interval = key[3] as Interval;
+      client.setQueryData(key, foldTrades(series, list, INTERVAL_MS[interval]));
+    }
   }
   batch.trades.clear();
 }
