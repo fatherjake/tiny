@@ -25,6 +25,7 @@ export default defineConfig({
       include: [
         "src/lib/**/*.ts",
         "src/hooks/**/*.ts",
+        "src/*.utils.ts",
         "src/components/*.utils.ts",
       ],
       exclude: ["**/*.test.ts", "src/lib/wagmi.ts"],
