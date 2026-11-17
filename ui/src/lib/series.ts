@@ -1,4 +1,4 @@
-import type { Depth, Scaled, Series } from "../types";
+import type { Candle, Depth, Scaled, Series } from "../types";
 import { bi } from "./scale";
 
 export type Spread = { spread: bigint | null; mid: bigint | null; pct: string };
@@ -56,6 +56,36 @@ export function applyCandles(book: Series, rows: CandleRow[]): Series {
     else bars.push(bar);
   }
   return { ...book, bars };
+}
+
+type Print = { timestamp_ms: number; price: Scaled };
+
+export function foldTrades(
+  book: Series,
+  trades: Print[],
+  width: number,
+): Series {
+  const bars = book.bars;
+  if (!bars) return book;
+  let next: Candle[] | null = null;
+  for (const trade of trades) {
+    const time = (Math.floor(trade.timestamp_ms / width) * width) / 1000;
+    const price = Number(bi(trade.price)) / 1e6;
+    const last = lastOf(next ?? bars);
+    if (last && time < last.time) continue;
+    next ??= [...bars];
+    if (last && time === last.time) {
+      next[next.length - 1] = {
+        ...last,
+        high: Math.max(last.high, price),
+        low: Math.min(last.low, price),
+        close: price,
+      };
+    } else {
+      next.push({ time, open: price, high: price, low: price, close: price });
+    }
+  }
+  return next ? { ...book, bars: next } : book;
 }
 
 type SeedRow = { height: number; price?: Scaled | null };

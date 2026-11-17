@@ -11,7 +11,7 @@ import {
   statusQuery,
   tradesQuery,
 } from "./marketQueries";
-import type { BlockMsg, MarketInfo, StoredTrade } from "../types";
+import type { BlockMsg, MarketInfo, StoredTrade, Trade } from "../types";
 
 function serve(respond: (url: string) => Response): string[] {
   const urls: string[] = [];
@@ -71,7 +71,7 @@ afterEach(() => {
 describe("feedQuery", () => {
   it("starts empty and resets to empty on refetch", async () => {
     const qc = client();
-    await qc.prefetchQuery(feedQuery);
+    await qc.query(feedQuery);
     expect(qc.getQueryData(feedQuery.queryKey)).toEqual([]);
 
     qc.setQueryData(feedQuery.queryKey, [{ height: 3 } as BlockMsg]);
@@ -89,7 +89,7 @@ describe("statusQuery", () => {
       .mockReturnValueOnce(112.6);
     const qc = client();
 
-    await qc.fetchQuery(statusQuery);
+    await qc.query(statusQuery);
 
     expect(urls).toEqual(["/status"]);
     expect(qc.getQueryData(["market", "status"])).toEqual({
@@ -101,7 +101,7 @@ describe("statusQuery", () => {
 
   it("fails with the URL and status", async () => {
     serve(() => new Response("", { status: 502 }));
-    await expect(client().fetchQuery(statusQuery)).rejects.toThrow(
+    await expect(client().query(statusQuery)).rejects.toThrow(
       "/status answered 502",
     );
   });
@@ -112,7 +112,7 @@ describe("marketsQuery", () => {
     const urls = serve(() => Response.json([market("BTC")]));
     const qc = client();
 
-    await qc.fetchQuery(marketsQuery);
+    await qc.query(marketsQuery);
 
     expect(urls).toEqual(["/markets"]);
     expect(qc.getQueryData(["market", "list"])).toEqual([market("BTC")]);
@@ -128,7 +128,7 @@ describe("booksQuery", () => {
     );
     const qc = client();
 
-    await qc.fetchQuery(booksQuery);
+    await qc.query(booksQuery);
 
     expect(urls).toEqual([
       "/markets",
@@ -150,7 +150,7 @@ describe("booksQuery", () => {
     const qc = client();
     qc.setQueryData(marketsQuery.queryKey, [market("SOL")]);
 
-    expect(await qc.fetchQuery(booksQuery)).toEqual({ SOL: { best_ask: 7 } });
+    expect(await qc.query(booksQuery)).toEqual({ SOL: { best_ask: 7 } });
     expect(urls).toEqual(["/book/SOL?levels=20"]);
   });
 
@@ -170,7 +170,7 @@ describe("booksQuery", () => {
           const qc = client();
           qc.setQueryData(marketsQuery.queryKey, names.map(market));
 
-          const books = await qc.fetchQuery(booksQuery);
+          const books = await qc.query(booksQuery);
 
           expect(Object.keys(books).sort()).toEqual([...names].sort());
           for (const name of names) expect(books[name]).toEqual({ name });
@@ -185,7 +185,7 @@ describe("tradesQuery", () => {
     const urls = serve(() => Response.json([trade(5)]));
     const qc = client();
 
-    await qc.fetchQuery(tradesQuery("BTC/USD"));
+    await qc.query(tradesQuery("BTC/USD"));
 
     expect(urls).toEqual(["/trades/BTC%2FUSD?limit=500"]);
     expect(qc.getQueryData(["market", "trades", "BTC/USD"])).toEqual([
@@ -204,7 +204,7 @@ describe("tradesQuery", () => {
   it("pages backwards from the last row of each full page", async () => {
     const urls = serve(tradeServer(1200));
 
-    const prints = await client().fetchQuery(tradesQuery("BTC"));
+    const prints = await client().query(tradesQuery("BTC"));
 
     expect(urls).toEqual([
       "/trades/BTC?limit=500",
@@ -219,7 +219,7 @@ describe("tradesQuery", () => {
   it("stops at two thousand trades", async () => {
     const urls = serve(tradeServer(5000));
 
-    const prints = await client().fetchQuery(tradesQuery("BTC"));
+    const prints = await client().query(tradesQuery("BTC"));
 
     expect(urls).toHaveLength(4);
     expect(prints).toHaveLength(2000);
@@ -231,7 +231,7 @@ describe("tradesQuery", () => {
       fc.asyncProperty(fc.integer({ min: 0, max: 2600 }), async (total) => {
         const urls = serve(tradeServer(total));
 
-        const prints = await client().fetchQuery(tradesQuery("BTC"));
+        const prints = await client().query(tradesQuery("BTC"));
 
         const kept = Math.min(total, 2000);
         expect(prints.map((row) => row.seq)).toEqual(
@@ -245,7 +245,7 @@ describe("tradesQuery", () => {
 
   it("fails with the URL and status", async () => {
     serve(() => new Response("", { status: 500 }));
-    await expect(client().fetchQuery(tradesQuery("BTC"))).rejects.toThrow(
+    await expect(client().query(tradesQuery("BTC"))).rejects.toThrow(
       "/trades/BTC?limit=500 answered 500",
     );
   });
@@ -266,7 +266,7 @@ describe("candlesQuery", () => {
     );
     const qc = client();
 
-    await qc.fetchQuery(candlesQuery("BTC/USD", "1m"));
+    await qc.query(candlesQuery("BTC/USD", "1m"));
 
     expect(urls).toEqual(["/candles/BTC%2FUSD?interval=1m"]);
     expect(qc.getQueryData(["market", "candles", "BTC/USD", "1m"])).toEqual({
@@ -274,44 +274,51 @@ describe("candlesQuery", () => {
     });
   });
 
-  it("refetches from one interval before the last bar and merges", async () => {
+  it("replaces cached bars with the server's full series on refetch", async () => {
     const qc = client();
     const key = candlesQuery("BTC", "5m").queryKey;
     qc.setQueryData(key, {
-      ticks: [{ time: 9, value: 1 }],
       bars: [
         { time: 1_700_000_000, open: 1, high: 1, low: 1, close: 1 },
-        { time: 1_700_000_300, open: 2, high: 2, low: 2, close: 2 },
+        { time: 1_700_000_300, open: 2, high: 9, low: 2, close: 2 },
       ],
     });
     const urls = serve(() =>
-      Response.json([
-        candle(1_700_000_300_000, 3_000_000),
-        candle(1_700_000_600_000, 4_000_000),
-      ]),
+      Response.json([candle(1_700_000_300_000, 3_000_000)]),
     );
 
-    await qc.fetchQuery({ ...candlesQuery("BTC", "5m"), staleTime: 0 });
+    await qc.query({ ...candlesQuery("BTC", "5m"), staleTime: 0 });
 
-    expect(urls).toEqual(["/candles/BTC?interval=5m&start=1700000000000"]);
+    expect(urls).toEqual(["/candles/BTC?interval=5m"]);
     expect(qc.getQueryData(key)).toEqual({
-      ticks: [{ time: 9, value: 1 }],
-      bars: [
-        { time: 1_700_000_000, open: 1, high: 1, low: 1, close: 1 },
-        { time: 1_700_000_300, open: 3, high: 3, low: 3, close: 3 },
-        { time: 1_700_000_600, open: 4, high: 4, low: 4, close: 4 },
-      ],
+      bars: [{ time: 1_700_000_300, open: 3, high: 3, low: 3, close: 3 }],
     });
   });
 
-  it("refetches the whole range when cached bars are empty", async () => {
+  it("folds cached trades from the server's last bar onward", async () => {
     const qc = client();
-    qc.setQueryData(candlesQuery("BTC", "1m").queryKey, { bars: [] });
-    const urls = serve(() => Response.json([]));
+    const at = (ts: number, price: number): Trade => ({
+      seq: ts,
+      height: 1,
+      timestamp_ms: ts,
+      market: "BTC",
+      side: "buy",
+      price,
+      size: 1,
+    });
+    qc.setQueryData(tradesQuery("BTC").queryKey, [
+      at(1_700_000_110_000, 1_500_000),
+      at(1_700_000_070_000, 3_000_000),
+      at(1_699_999_990_000, 9_000_000),
+    ]);
+    serve(() => Response.json([candle(1_700_000_040_000, 2_000_000)]));
 
-    await qc.fetchQuery({ ...candlesQuery("BTC", "1m"), staleTime: 0 });
+    const series = await qc.query(candlesQuery("BTC", "1m"));
 
-    expect(urls).toEqual(["/candles/BTC?interval=1m"]);
+    expect(series.bars).toEqual([
+      { time: 1_700_000_040, open: 2, high: 3, low: 2, close: 3 },
+      { time: 1_700_000_100, open: 1.5, high: 1.5, low: 1.5, close: 1.5 },
+    ]);
   });
 
   it("keeps bars strictly increasing across any sequence of refreshes", async () => {
@@ -336,7 +343,7 @@ describe("candlesQuery", () => {
                 ),
               ),
             );
-            await qc.fetchQuery(query);
+            await qc.query(query);
           }
           const bars = qc.getQueryData(query.queryKey)?.bars ?? [];
           for (let i = 1; i < bars.length; i++) {
@@ -365,7 +372,7 @@ describe("fundingQuery", () => {
     const urls = serve(() => Response.json(rows));
     const qc = client();
 
-    await qc.fetchQuery(fundingQuery("ETH"));
+    await qc.query(fundingQuery("ETH"));
 
     expect(urls).toEqual(["/funding/ETH?limit=50"]);
     expect(qc.getQueryData(["market", "funding", "ETH"])).toEqual(rows);
