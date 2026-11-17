@@ -9,10 +9,11 @@ import {
   useMarkets,
   useTrades,
 } from "../hooks/useMarket";
-import type { Scaled, Trade } from "../types";
-import { Book, mineKey } from "./Book";
+import type { Scaled } from "../types";
+import { Book } from "./Book";
 import { Feed } from "./Feed";
 import { Funding } from "./History";
+import { latest, mineKeys } from "./Ladder.utils";
 import { Tape } from "./Tape";
 
 type Props = {
@@ -28,22 +29,9 @@ const TABS = [
   ["blocks", "Blocks"],
 ] as const;
 
-const PRINTS = 40;
-const latest = (rows: Trade[]) => rows.slice(0, PRINTS);
-
 function BookTab({ market, trader, onPrice }: Props) {
   const orders = useOpenOrders(trader);
-  const mine = useMemo(
-    () =>
-      new Set(
-        orders
-          .filter((order) => order.market === market)
-          .map((order) =>
-            mineKey(order.side === "buy" ? "bid" : "ask", order.price),
-          ),
-      ),
-    [orders, market],
-  );
+  const mine = useMemo(() => mineKeys(orders, market), [orders, market]);
   return <Book book={useBook(market)} mine={mine} onPrice={onPrice} />;
 }
 

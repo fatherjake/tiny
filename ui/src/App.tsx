@@ -10,19 +10,8 @@ import { useMarketStream } from "./hooks/useMarketStream";
 import { useOrderActions } from "./hooks/useOrderActions";
 import { useTraderSession } from "./hooks/useTraderSession";
 import { unscale } from "./lib/scale";
-import type { MarketInfo, OrderDraft, Scaled } from "./types";
-
-const DOCK_KEY = "tiny.dock";
-function savedDock(): number {
-  try {
-    const value = Number(localStorage.getItem(DOCK_KEY));
-    return value > 0 ? value : 200;
-  } catch {
-    return 200;
-  }
-}
-
-const firstName = (markets: MarketInfo[]) => markets[0]?.name ?? "";
+import type { OrderDraft, Scaled } from "./types";
+import { dockHeight, firstName, saveDock, savedDock } from "./App.utils";
 
 export function App() {
   const ws = useMarketStream();
@@ -106,13 +95,9 @@ export function App() {
         onClose={(pos) => void actions.close(pos)}
         pick={{ picked, onPick }}
         onResize={(height) => {
-          const next = Math.round(
-            Math.min(Math.max(height, 60), window.innerHeight - 200),
-          );
+          const next = dockHeight(height, window.innerHeight);
           setDock(next);
-          try {
-            localStorage.setItem(DOCK_KEY, String(next));
-          } catch {}
+          saveDock(next);
         }}
       />
     </div>

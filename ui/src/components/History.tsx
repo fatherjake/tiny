@@ -1,11 +1,12 @@
 import { fillSide } from "../lib/orders";
-import { fmt, pct, usd } from "../lib/scale";
+import { fmt, usd } from "../lib/scale";
 import type {
   FundingRow,
   MarketInfo,
   StoredOrder,
   StoredTrade,
 } from "../types";
+import { fundingRate } from "./History.utils";
 
 export function OrderHistory({ orders }: { orders: StoredOrder[] }) {
   return (
@@ -120,12 +121,7 @@ export function Funding({
               <tr key={row.market + ":" + row.height}>
                 <td>{row.height}</td>
                 <td>{usd(row.index)}</td>
-                <td>
-                  {pct(
-                    row.rate,
-                    markets.find((m) => m.name === row.market)?.oracle_price,
-                  )}
-                </td>
+                <td>{fundingRate(row, markets)}</td>
               </tr>
             ))
           ) : (

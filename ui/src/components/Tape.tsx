@@ -2,13 +2,12 @@ import { useState } from "react";
 
 import { fmt, usd } from "../lib/scale";
 import type { Trade } from "../types";
+import { seqs } from "./Tape.utils";
 
 type Props = {
   prints: Trade[];
   tint?: boolean;
 };
-
-const seqs = (prints: Trade[]) => new Set(prints.map((print) => print.seq));
 
 export function Tape({ prints, tint = false }: Props) {
   const [first, setFirst] = useState(() =>
