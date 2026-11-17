@@ -53,6 +53,10 @@ export function useTrades<T>(market: string, select?: (trades: Trade[]) => T) {
   return select ? data : (data ?? NONE);
 }
 
+export function useLoadTrades(market: string) {
+  useQuery({ ...tradesQuery(market), enabled: market !== "" });
+}
+
 export function useCandles(market: string, interval: Interval) {
   return useQuery({ ...candlesQuery(market, interval), enabled: market !== "" })
     .data;
