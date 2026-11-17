@@ -82,7 +82,7 @@ describe("accountQuery", () => {
       "/account answered 500",
     );
   });
-  it.fails("encodes the trader in the account URL", async () => {
+  it("encodes the trader in the account URL", async () => {
     const urls = serve(() => Response.json(null));
     await client().fetchQuery(accountQuery("a/b?c"));
     expect(urls).toEqual(["/account/a%2Fb%3Fc"]);
