@@ -2,7 +2,7 @@ import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
 import type { FundingRow, MarketInfo } from "../types";
-import { fundingRate } from "./History.utils";
+import { fundingApr, fundingDelta, YEAR_MS } from "./History.utils";
 
 const market = (
   name: string,
@@ -20,16 +20,25 @@ const market = (
   funding_base: null,
 });
 
-const row = (marketName: string, rate: FundingRow["rate"]): FundingRow => ({
+const row = (
+  marketName: string,
+  rate: FundingRow["rate"],
+  ts = YEAR_MS,
+): FundingRow => ({
   height: 7,
   market: marketName,
   index: 0,
   rate,
-  ts: 0,
+  ts,
 });
 
-describe("fundingRate", () => {
-  it("shows the rate as a share of the market's oracle price", () => {
+const start = row("BTC-USD", 0, 0);
+
+const fundingRate = (r: FundingRow, markets: MarketInfo[]) =>
+  fundingApr(r, start, markets);
+
+describe("fundingApr", () => {
+  it("annualises the rate as a share of the market's oracle price", () => {
     expect(
       fundingRate(row("BTC-USD", 1000), [
         market("ETH-USD", 1),
@@ -69,5 +78,36 @@ describe("fundingRate", () => {
         },
       ),
     );
+  });
+
+  it("scales a short block's rate up to a year", () => {
+    expect(
+      fundingApr(row("BTC-USD", 266, 700), start, [
+        market("BTC-USD", 51_000_000_000),
+      ]),
+    ).toBe("23.4974%");
+  });
+
+  it("shows a dash without an earlier row to measure time from", () => {
+    const markets = [market("BTC-USD", 100_000_000)];
+    expect(fundingApr(row("BTC-USD", 1000), undefined, markets)).toBe("-");
+    expect(fundingApr(start, start, markets)).toBe("-");
+  });
+});
+
+describe("fundingDelta", () => {
+  it("recovers how far mark sat from oracle during the block", () => {
+    const prev = row("BTC-USD", 0, 0);
+    expect(fundingDelta(row("BTC-USD", 1_000_000, 3_600_000), prev)).toBe(
+      1_000_000n,
+    );
+    expect(fundingDelta(row("BTC-USD", -5_000, 1_800_000), prev)).toBe(
+      -10_000n,
+    );
+  });
+
+  it("has no delta without an earlier row", () => {
+    expect(fundingDelta(row("BTC-USD", 1000), undefined)).toBeNull();
+    expect(fundingDelta(start, start)).toBeNull();
   });
 });

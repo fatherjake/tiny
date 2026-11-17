@@ -8,7 +8,7 @@ type Props = {
 
 export function OpenOrders({ orders, onCancel }: Props) {
   return (
-    <section className="pad grow">
+    <section className="grow">
       <table>
         <thead>
           <tr>

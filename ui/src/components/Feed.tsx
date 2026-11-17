@@ -1,9 +1,12 @@
+import { usePause } from "../hooks/usePause";
 import { short } from "../lib/scale";
 import type { BlockMsg } from "../types";
+import { PausePill } from "./PausePill";
 
 export function Feed({ blocks }: { blocks: BlockMsg[] }) {
+  const pause = usePause(blocks);
   const rows = [];
-  for (const block of blocks) {
+  for (const block of pause.rows) {
     const txs = block.txs ?? [];
     rows.push(
       <tr key={"b" + block.height}>
@@ -26,7 +29,7 @@ export function Feed({ blocks }: { blocks: BlockMsg[] }) {
     });
   }
   return (
-    <section className="feed">
+    <section className="feed" ref={pause.ref} onScroll={pause.onScroll}>
       <table>
         <thead>
           <tr>
@@ -48,6 +51,7 @@ export function Feed({ blocks }: { blocks: BlockMsg[] }) {
           )}
         </tbody>
       </table>
+      <PausePill paused={pause.paused} onResume={pause.resume} />
     </section>
   );
 }

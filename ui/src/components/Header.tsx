@@ -60,7 +60,7 @@ export function Header({ ws, selected, onSelect }: Props) {
           <b>oracle</b> {usd(market?.oracle_price)}
         </span>
         <span>
-          <b>funding</b> {annual(market)} APR
+          <b>funding 1h</b> {annual(market)} APR
         </span>
       </div>
       <div className="quote">

@@ -43,7 +43,7 @@ export function Account({ account, onClose, pick }: Props) {
   const positions = sortPositions(account?.positions);
   const collateral = bi(account?.collateral ?? 0);
   return (
-    <section className="pad grow">
+    <section className="grow">
       <table>
         <thead>
           <tr>
