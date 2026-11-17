@@ -45,4 +45,17 @@ describe("usePause", () => {
     expect(result.current.paused).toBe(false);
     expect(result.current.rows).toEqual([3, 2, 1]);
   });
+
+  it("scrolls the list back to the top on resume", () => {
+    const { result } = pause([1]);
+    const list = document.createElement("div");
+    document.body.append(list);
+    list.scrollTop = 40;
+    result.current.ref.current = list;
+    act(() => result.current.onScroll(at(40)));
+    act(() => result.current.resume());
+    expect(list.scrollTop).toBe(0);
+    expect(result.current.paused).toBe(false);
+    list.remove();
+  });
 });
