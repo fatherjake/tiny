@@ -434,7 +434,6 @@ button.dark:disabled {
 }
 @keyframes arrive {
   from {
-    opacity: 0;
     background-color: rgb(0 0 0 / 10%);
   }
 }
@@ -456,7 +455,7 @@ td.flash-down.flash-0 {
 td.flash-down.flash-1 {
   animation: fall-1 0.8s ease-out;
 }
-.tape tr.fresh {
+.tape tbody tr {
   animation: arrive 0.6s ease-out;
 }
 .book tr.mine td.l {
