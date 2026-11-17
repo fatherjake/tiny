@@ -1,17 +1,11 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
-import {
-  applyCandles,
-  extendTicks,
-  seed,
-  spreadMid,
-  type CandleRow,
-} from "./series";
+import { foldTrades, spreadMid, toBars, type CandleRow } from "./series";
 
-describe("applyCandles", () => {
+describe("toBars", () => {
   it("builds open high low close in time order, at the block time", () => {
-    const next = applyCandles({}, [
+    const next = toBars([
       {
         ts: 1_700_000_060_000,
         open: 2_000_000,
@@ -27,39 +21,14 @@ describe("applyCandles", () => {
         close: 1_000_000,
       },
     ]);
-    expect(next.bars).toEqual([
+    expect(next).toEqual([
       { time: 1_700_000_000, open: 1, high: 1, low: 1, close: 1 },
       { time: 1_700_000_060, open: 2, high: 4, low: 1, close: 3 },
     ]);
   });
 
-  it("merges a refresh of the latest minutes into the bars already there", () => {
-    const row = (ts: number, close: number) => ({
-      ts,
-      open: 1_000_000,
-      high: close,
-      low: 1_000_000,
-      close,
-    });
-    const first = applyCandles({}, [
-      row(1_700_000_000_000, 1_000_000),
-      row(1_700_000_060_000, 2_000_000),
-    ]);
-    const next = applyCandles(first, [
-      row(1_700_000_060_000, 3_000_000),
-      row(1_700_000_120_000, 4_000_000),
-    ]);
-    expect(next.bars?.map((bar) => [bar.time, bar.close])).toEqual([
-      [1_700_000_000, 1],
-      [1_700_000_060, 3],
-      [1_700_000_120, 4],
-    ]);
-    expect(applyCandles(first, [])).toBe(first);
-    expect(applyCandles({}, []).bars).toEqual([]);
-  });
-
   it("keeps each second as its own candle", () => {
-    const next = applyCandles({}, [
+    const next = toBars([
       {
         ts: 1_700_000_000_000,
         open: 1_000_000,
@@ -75,41 +44,39 @@ describe("applyCandles", () => {
         close: 3_000_000,
       },
     ]);
-    expect(next.bars?.map((bar) => bar.time)).toEqual([
-      1_700_000_000, 1_700_000_001,
-    ]);
+    expect(next.map((bar) => bar.time)).toEqual([1_700_000_000, 1_700_000_001]);
+  });
+
+  it("is empty for no rows", () => {
+    expect(toBars([])).toEqual([]);
   });
 });
 
-describe("tick series", () => {
-  it("keeps one point per block when trades share a second", () => {
-    const seeded = seed({}, [
-      { height: 4, price: 4_000_000 },
-      { height: 3, price: 3_000_000 },
-      { height: 2, price: 2_500_000 },
-      { height: 2, price: 1_000_000 },
-    ]);
-    expect(seeded.ticks).toEqual([
-      { time: 2, value: 2.5 },
-      { time: 3, value: 3 },
-      { time: 4, value: 4 },
-    ]);
-    const live = seed(seeded, [{ height: 4, price: 5_000_000 }]);
-    expect(live.ticks).toEqual([
-      { time: 2, value: 2.5 },
-      { time: 3, value: 3 },
-      { time: 4, value: 5 },
-    ]);
+describe("foldTrades", () => {
+  const bars = [{ time: 120, open: 1, high: 1, low: 1, close: 1 }];
+
+  it("keeps the same array when every trade is older than the last bar", () => {
+    expect(
+      foldTrades(bars, [{ timestamp_ms: 60_000, price: 9_000_000 }], 60_000),
+    ).toBe(bars);
   });
 
-  it("keeps the earliest block as later trades arrive", () => {
-    const rows = Array.from({ length: 181 }, (_, index) => ({
-      height: 181 - index,
-      price: 1_000_000,
-    }));
-    const seeded = seed({}, rows);
-    expect(seeded.ticks?.[0]).toEqual({ time: 1, value: 1 });
-    expect(seeded.ticks).toHaveLength(181);
+  it("updates the last bar and opens new ones in order", () => {
+    expect(
+      foldTrades(
+        bars,
+        [
+          { timestamp_ms: 150_000, price: 3_000_000 },
+          { timestamp_ms: 170_000, price: 500_000 },
+          { timestamp_ms: 185_000, price: 2_000_000 },
+        ],
+        60_000,
+      ),
+    ).toEqual([
+      { time: 120, open: 1, high: 3, low: 0.5, close: 0.5 },
+      { time: 180, open: 2, high: 2, low: 2, close: 2 },
+    ]);
+    expect(bars[0].close).toBe(1);
   });
 });
 
@@ -144,32 +111,6 @@ describe("spreadMid", () => {
   });
 });
 
-describe("seed edges", () => {
-  it("skips rows without a price and rows older than the last tick", () => {
-    const book = { ticks: [{ time: 5, value: 1 }] };
-    const next = seed(book, [
-      { height: 7, price: 7_000_000 },
-      { height: 6, price: null },
-      { height: 3, price: 3_000_000 },
-      { height: 6 },
-    ]);
-    expect(next.ticks).toEqual([
-      { time: 5, value: 1 },
-      { time: 7, value: 7 },
-    ]);
-    expect(book.ticks).toEqual([{ time: 5, value: 1 }]);
-  });
-
-  it("returns the same book when nothing new arrives", () => {
-    const book = { ticks: [{ time: 5, value: 1 }] };
-    expect(seed(book, [{ height: 4, price: 1 }, { height: 9 }])).toBe(book);
-    expect(seed(book, [{ height: 9, price: 2_000_000 }]).ticks).toEqual([
-      { time: 5, value: 1 },
-      { time: 9, value: 2 },
-    ]);
-  });
-});
-
 const candle = fc.record({
   ts: fc.integer({ min: 0, max: 600_000 }),
   open: fc.integer({ min: 0, max: 10 ** 12 }),
@@ -198,108 +139,8 @@ describe("series properties", () => {
   it("builds one bar per second from the latest row in that second", () => {
     fc.assert(
       fc.property(fc.array(candle, { minLength: 1 }), (rows) => {
-        expect(applyCandles({}, rows).bars).toEqual(candleModel(rows));
+        expect(toBars(rows)).toEqual(candleModel(rows));
       }),
     );
-  });
-
-  it("gives the same bars when the same rows are applied twice", () => {
-    fc.assert(
-      fc.property(fc.array(candle), fc.array(candle), (first, second) => {
-        const once = applyCandles(applyCandles({}, first), second);
-        expect(applyCandles(once, second).bars).toEqual(once.bars);
-      }),
-    );
-  });
-
-  it("keeps bars before a refresh and replaces everything from its first second", () => {
-    fc.assert(
-      fc.property(
-        fc.array(candle, { minLength: 1 }),
-        fc.array(candle, { minLength: 1 }),
-        (first, second) => {
-          const bars = applyCandles(applyCandles({}, first), second).bars ?? [];
-          const from = Math.min(
-            ...second.map((row) => Math.floor(row.ts / 1000)),
-          );
-          expect(bars).toEqual([
-            ...candleModel(first).filter((bar) => bar.time < from),
-            ...candleModel(second),
-          ]);
-        },
-      ),
-    );
-  });
-
-  it("keeps ticks strictly increasing in block height", () => {
-    fc.assert(
-      fc.property(
-        fc.array(
-          fc.record({
-            height: fc.nat(50),
-            price: fc.option(fc.integer({ min: 0, max: 10 ** 9 })),
-          }),
-        ),
-        fc.array(fc.record({ height: fc.nat(50), price: fc.nat(10 ** 9) })),
-        (first, second) => {
-          const ticks = seed(seed({}, first), second).ticks ?? [];
-          for (let i = 1; i < ticks.length; i++) {
-            expect(ticks[i].time).toBeGreaterThan(ticks[i - 1].time);
-          }
-        },
-      ),
-    );
-  });
-
-  it("seeds newest-first rows to one tick per height holding the newest price", () => {
-    fc.assert(
-      fc.property(
-        fc.array(fc.record({ height: fc.nat(50), price: fc.nat(10 ** 9) })),
-        (rows) => {
-          const newestFirst = [...rows].sort((a, b) => b.height - a.height);
-          const byHeight = new Map<number, number>();
-          for (const row of [...newestFirst].reverse()) {
-            byHeight.set(row.height, row.price / 1e6);
-          }
-          const expected = [...byHeight.entries()]
-            .sort(([a], [b]) => a - b)
-            .map(([time, value]) => ({ time, value }));
-          expect(seed({}, newestFirst).ticks ?? []).toEqual(expected);
-        },
-      ),
-    );
-  });
-});
-
-describe("extendTicks", () => {
-  const print = (height: number, price: number) => ({
-    height,
-    price: String(price * 1_000_000),
-  });
-
-  it("keeps history older than the trades it was just given", () => {
-    const first = extendTicks([], [print(2, 11), print(1, 10)]);
-    const next = extendTicks(first, [print(4, 13), print(3, 12)]);
-    expect(next.map((t) => t.time)).toEqual([1, 2, 3, 4]);
-  });
-
-  it("moves the newest point when more trades land in the same block", () => {
-    const first = extendTicks([], [print(2, 11), print(1, 10)]);
-    expect(extendTicks(first, [print(2, 15), print(2, 11)]).at(-1)).toEqual({
-      time: 2,
-      value: 15,
-    });
-  });
-
-  it("starts again when the trades jump backwards, such as after a resync", () => {
-    const fake = extendTicks([], [print(900, 1)]);
-    expect(extendTicks(fake, [print(5, 2)])).toEqual([{ time: 5, value: 2 }]);
-  });
-
-  it("keeps the same array when nothing new arrived and caps its length", () => {
-    const first = extendTicks([], [print(1, 10)]);
-    expect(extendTicks(first, [])).toBe(first);
-    const many = Array.from({ length: 10 }, (_, i) => print(10 - i, 1));
-    expect(extendTicks([], many, 4).map((t) => t.time)).toEqual([7, 8, 9, 10]);
   });
 });

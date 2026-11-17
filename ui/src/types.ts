@@ -96,7 +96,6 @@ export type OrderDraft = {
   reduceOnly: boolean;
 };
 
-export type LinePoint = { time: number; value: number };
 export type Candle = {
   time: number;
   open: number;
@@ -149,9 +148,4 @@ export type FundingRow = {
   index: Scaled;
   rate: Scaled;
   ts: number;
-};
-
-export type Series = {
-  ticks?: LinePoint[];
-  bars?: Candle[];
 };

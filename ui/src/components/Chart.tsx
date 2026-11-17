@@ -1,24 +1,23 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import {
   CandlestickSeries,
   ColorType,
   type IChartApi,
   type IPriceLine,
   type ISeriesApi,
-  LineSeries,
   LineStyle,
   type Time,
   type UTCTimestamp,
   createChart,
 } from "lightweight-charts";
 
-import { useSeries } from "../hooks/useMarket";
+import { useCandles } from "../hooks/useMarket";
 import { usePositionLines } from "../hooks/usePositionLines";
-import type { Series } from "../types";
+import type { Interval } from "../lib/marketQueries";
+import type { Candle } from "../types";
 import {
   type Drawn,
-  SPANS,
-  type Span,
+  INTERVALS,
   axisLabel,
   dollars,
   fitTarget,
@@ -29,7 +28,6 @@ import {
 type Plot = {
   chart: IChartApi;
   candles: ISeriesApi<"Candlestick">;
-  line: ISeriesApi<"Line">;
 };
 
 type Props = {
@@ -39,20 +37,15 @@ type Props = {
 };
 
 export function Chart({ market, trader, picked }: Props) {
-  const [span, setSpan] = useState<Span>("1m");
-  const points = useSeries(
-    market,
-    span === "tick" ? "1m" : span,
-    span === "tick",
-  );
+  const [interval, choose] = useState<Interval>("1m");
+  const bars = useCandles(market, interval);
   const lines = usePositionLines(trader, picked === market ? market : "");
   const host = useRef<HTMLDivElement>(null);
   const api = useRef<Plot | null>(null);
-  const spanRef = useRef(span);
   const fitted = useRef<string | null>(null);
   const drawn = useRef<Drawn>({ key: "", last: null, count: 0 });
   const shown = useRef<object | undefined>(undefined);
-  spanRef.current = span;
+  const timeLabel = useEffectEvent((time: Time) => axisLabel(interval, time));
 
   useEffect(() => {
     const el = host.current;
@@ -68,7 +61,7 @@ export function Chart({ market, trader, picked }: Props) {
         attributionLogo: true,
       },
       localization: {
-        timeFormatter: (time: Time) => axisLabel(spanRef.current, time),
+        timeFormatter: (time: Time) => timeLabel(time),
         priceFormatter: dollars,
       },
       grid: {
@@ -85,8 +78,6 @@ export function Chart({ market, trader, picked }: Props) {
         secondsVisible: false,
         barSpacing: 12,
         rightOffset: 4,
-        tickMarkFormatter: (time: Time) =>
-          spanRef.current === "tick" ? axisLabel("tick", time) : null,
       },
       crosshair: {
         vertLine: { color: "#000", labelBackgroundColor: "#000" },
@@ -106,7 +97,6 @@ export function Chart({ market, trader, picked }: Props) {
         wickUpColor: "#18803a",
         wickDownColor: "#c62828",
       }),
-      line: chart.addSeries(LineSeries, { color: "#000", lineWidth: 2 }),
     };
     return () => {
       chart.remove();
@@ -117,8 +107,7 @@ export function Chart({ market, trader, picked }: Props) {
   useEffect(() => {
     const plot = api.current;
     if (!plot || !lines) return;
-    const series: ISeriesApi<"Candlestick"> | ISeriesApi<"Line"> =
-      span === "tick" ? plot.line : plot.candles;
+    const series = plot.candles;
     const line = (price: number, title: string, color: string) =>
       series.createPriceLine({
         price,
@@ -135,70 +124,46 @@ export function Chart({ market, trader, picked }: Props) {
     return () => {
       for (const priceLine of made) series.removePriceLine(priceLine);
     };
-  }, [span, lines]);
+  }, [lines]);
 
   useEffect(() => {
     const plot = api.current;
     if (!plot) return;
-    const ticks = span === "tick";
-    const data: { time: number }[] = (ticks ? points.ticks : points.bars) ?? [];
-    const count = data.length;
-    const plan = planDraw(drawn.current, market + ":" + span, data);
+    const data = bars ?? [];
+    const plan = planDraw(drawn.current, market + ":" + interval, data);
     const tail = data[data.length - 1];
     if (plan.kind === "reset") {
-      if (ticks) {
-        plot.candles.setData([]);
-        plot.line.setData(
-          (points.ticks ?? []).map((point) => ({
-            ...point,
-            time: point.time as UTCTimestamp,
-          })),
-        );
-      } else {
-        plot.line.setData([]);
-        plot.candles.setData(
-          (points.bars ?? []).map((bar) => ({
-            ...bar,
-            time: bar.time as UTCTimestamp,
-          })),
-        );
-      }
+      plot.candles.setData(data.map(toPlot));
     } else if (plan.from < data.length - 1 || !sameRow(tail, shown.current)) {
       for (let i = plan.from; i < data.length; i++) {
-        if (ticks) {
-          const point = points.ticks![i];
-          plot.line.update({ ...point, time: point.time as UTCTimestamp });
-        } else {
-          const bar = points.bars![i];
-          plot.candles.update({ ...bar, time: bar.time as UTCTimestamp });
-        }
+        plot.candles.update(toPlot(data[i]));
       }
     }
     drawn.current = plan.drawn;
     shown.current = tail;
-    const key = market + ":" + span + ":" + (count > 0);
+    const key = market + ":" + interval + ":" + (data.length > 0);
     if (fitted.current !== key) {
       fitted.current = key;
-      fitView(plot, span, points);
+      fitView(plot.chart, interval, data);
     }
-  }, [market, points, span]);
+  }, [market, bars, interval]);
 
   return (
     <section className="chart">
       <div className="tabs">
-        {SPANS.map((id) => (
+        {INTERVALS.map((id) => (
           <button
             type="button"
             key={id}
-            className={span === id ? "on" : ""}
-            onClick={() => setSpan(id)}
+            className={interval === id ? "on" : ""}
+            onClick={() => choose(id)}
           >
             {id}
           </button>
         ))}
       </div>
       <div className="plot" ref={host}>
-        {(span === "tick" ? points.ticks : points.bars) == null ? (
+        {bars == null ? (
           <progress className="loading" aria-label="loading chart" />
         ) : null}
       </div>
@@ -206,13 +171,15 @@ export function Chart({ market, trader, picked }: Props) {
   );
 }
 
-function fitView(plot: Plot, span: Span, points: Series): void {
-  const target = fitTarget(span, points);
-  plot.chart.priceScale("right").applyOptions({ autoScale: true });
-  if (target === "content") {
-    plot.chart.timeScale().fitContent();
-  } else if (target) {
-    plot.chart.timeScale().setVisibleRange({
+function toPlot(bar: Candle) {
+  return { ...bar, time: bar.time as UTCTimestamp };
+}
+
+function fitView(chart: IChartApi, interval: Interval, bars: Candle[]): void {
+  chart.priceScale("right").applyOptions({ autoScale: true });
+  const target = fitTarget(interval, bars);
+  if (target) {
+    chart.timeScale().setVisibleRange({
       from: target.from as UTCTimestamp,
       to: target.to as UTCTimestamp,
     });

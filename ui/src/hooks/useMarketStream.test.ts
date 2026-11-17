@@ -230,15 +230,15 @@ describe("useMarketStream", () => {
     ]);
   });
 
-  it("keeps at most 2000 prints", () => {
+  it("keeps at most 500 prints", () => {
     const { client, push } = stream();
-    const old = Array.from({ length: 2000 }, (_, i) => print(2000 - i));
+    const old = Array.from({ length: 500 }, (_, i) => print(500 - i));
     client.setQueryData(["market", "trades", "BTC"], old);
-    push({ type: "trade", ...print(2001) });
+    push({ type: "trade", ...print(501) });
     const rows = client.getQueryData<Trade[]>(["market", "trades", "BTC"]);
-    expect(rows?.length).toBe(2000);
-    expect(rows?.[0].seq).toBe(2001);
-    expect(rows?.[1999].seq).toBe(2);
+    expect(rows?.length).toBe(500);
+    expect(rows?.[0].seq).toBe(501);
+    expect(rows?.[499].seq).toBe(2);
   });
 
   it("folds trades into every loaded candle series for their market", () => {
@@ -256,15 +256,18 @@ describe("useMarketStream", () => {
       timestamp_ms: ts,
       price: price * 1e6,
     });
-    client.setQueryData(["market", "candles", "BTC", "1m"], {
-      bars: [bar(1_700_000_040, 5), bar(1_700_000_100, 10)],
-    });
-    client.setQueryData(["market", "candles", "BTC", "5m"], {
-      bars: [bar(1_699_999_800, 10)],
-    });
-    client.setQueryData(["market", "candles", "ETH", "1m"], {
-      bars: [bar(1_700_000_100, 7)],
-    });
+    client.setQueryData(
+      ["market", "candles", "BTC", "1m"],
+      [bar(1_700_000_040, 5), bar(1_700_000_100, 10)],
+    );
+    client.setQueryData(
+      ["market", "candles", "BTC", "5m"],
+      [bar(1_699_999_800, 10)],
+    );
+    client.setQueryData(
+      ["market", "candles", "ETH", "1m"],
+      [bar(1_700_000_100, 7)],
+    );
 
     push(
       trade(1, 1_700_000_050_000, 99),
@@ -273,22 +276,18 @@ describe("useMarketStream", () => {
       trade(4, 1_700_000_170_000, 11),
     );
 
-    expect(client.getQueryData(["market", "candles", "BTC", "1m"])).toEqual({
-      bars: [
-        bar(1_700_000_040, 5),
-        { time: 1_700_000_100, open: 10, high: 12, low: 8, close: 8 },
-        { time: 1_700_000_160, open: 11, high: 11, low: 11, close: 11 },
-      ],
-    });
-    expect(client.getQueryData(["market", "candles", "BTC", "5m"])).toEqual({
-      bars: [
-        { time: 1_699_999_800, open: 10, high: 99, low: 10, close: 99 },
-        { time: 1_700_000_100, open: 12, high: 12, low: 8, close: 11 },
-      ],
-    });
-    expect(client.getQueryData(["market", "candles", "ETH", "1m"])).toEqual({
-      bars: [bar(1_700_000_100, 7)],
-    });
+    expect(client.getQueryData(["market", "candles", "BTC", "1m"])).toEqual([
+      bar(1_700_000_040, 5),
+      { time: 1_700_000_100, open: 10, high: 12, low: 8, close: 8 },
+      { time: 1_700_000_160, open: 11, high: 11, low: 11, close: 11 },
+    ]);
+    expect(client.getQueryData(["market", "candles", "BTC", "5m"])).toEqual([
+      { time: 1_699_999_800, open: 10, high: 99, low: 10, close: 99 },
+      { time: 1_700_000_100, open: 12, high: 12, low: 8, close: 11 },
+    ]);
+    expect(client.getQueryData(["market", "candles", "ETH", "1m"])).toEqual([
+      bar(1_700_000_100, 7),
+    ]);
   });
 
   it("resyncs markets and accounts when a block or trade is skipped", () => {

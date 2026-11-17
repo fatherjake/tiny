@@ -7,13 +7,13 @@ import {
   INTERVAL_MS,
   type Interval,
   marketKeys,
-  TICK_TRADES,
+  MAX_TRADES,
 } from "./marketQueries";
 import { foldTrades } from "./series";
 import type {
   BlockMsg,
+  Candle,
   Depth,
-  Series,
   Status,
   Trade,
   WsMessage,
@@ -72,7 +72,7 @@ function queueTrade(client: QueryClient, trade: Trade): void {
   }
   const list = batch.trades.get(trade.market) ?? [];
   list.push(trade);
-  if (list.length > TICK_TRADES * 2) list.splice(0, list.length - TICK_TRADES);
+  if (list.length > MAX_TRADES * 2) list.splice(0, list.length - MAX_TRADES);
   batch.trades.set(trade.market, list);
   batch.frame ??= requestAnimationFrame(() => flushTrades(client));
 }
@@ -86,12 +86,12 @@ export function flushTrades(client: QueryClient): void {
     client.setQueryData<Trade[]>(marketKeys.trades(market), (prev) =>
       mergeTrades(prev, list),
     );
-    for (const [key, series] of client.getQueriesData<Series>({
+    for (const [key, bars] of client.getQueriesData<Candle[]>({
       queryKey: ["market", "candles", market],
     })) {
-      if (!series) continue;
+      if (!bars) continue;
       const interval = key[3] as Interval;
-      client.setQueryData(key, foldTrades(series, list, INTERVAL_MS[interval]));
+      client.setQueryData(key, foldTrades(bars, list, INTERVAL_MS[interval]));
     }
   }
   batch.trades.clear();
@@ -110,5 +110,5 @@ export function mergeTrades(
     seen.add(trade.seq);
     fresh.push(trade);
   }
-  return fresh.length ? [...fresh, ...prev].slice(0, TICK_TRADES) : prev;
+  return fresh.length ? [...fresh, ...prev].slice(0, MAX_TRADES) : prev;
 }

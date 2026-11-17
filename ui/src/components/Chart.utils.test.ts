@@ -19,47 +19,35 @@ const bar = (time: number): Candle => ({
   low: 1,
   close: 1,
 });
-const tick = (time: number) => ({ time, value: 1 });
 
 describe("fitTarget", () => {
   it("shows the last 30 one-minute bars", () => {
-    expect(fitTarget("1m", { bars: [bar(1000), bar(7200)] })).toEqual({
+    expect(fitTarget("1m", [bar(1000), bar(7200)])).toEqual({
       from: 5400,
       to: 7200,
     });
   });
 
   it("shows the last 30 five-minute bars", () => {
-    expect(fitTarget("5m", { bars: [bar(20_000)] })).toEqual({
+    expect(fitTarget("5m", [bar(20_000)])).toEqual({
       from: 11_000,
       to: 20_000,
     });
   });
 
-  it("fits all content for ticks", () => {
-    expect(fitTarget("tick", { ticks: [tick(1)], bars: [bar(60)] })).toBe(
-      "content",
-    );
+  it("does nothing without bars", () => {
+    expect(fitTarget("1m", [])).toBe(null);
   });
 
-  it("does nothing without points for the span", () => {
-    expect(fitTarget("1m", { bars: [], ticks: [tick(1)] })).toBe(null);
-    expect(fitTarget("1m", {})).toBe(null);
-    expect(fitTarget("tick", { ticks: [], bars: [bar(60)] })).toBe(null);
-    expect(fitTarget("tick", {})).toBe(null);
-    expect(fitTarget("tick", { ticks: [tick(2)] })).toBe("content");
-  });
-
-  it("always ends the bar window at the last bar and spans 30 intervals", () => {
+  it("always ends the window at the last bar and spans 30 intervals", () => {
     fc.assert(
       fc.property(
         fc.constantFrom(["1m", 60] as const, ["5m", 300] as const),
         fc.array(fc.integer({ min: 0, max: 2_000_000_000 }), { minLength: 1 }),
-        ([span, seconds], times) => {
-          const target = fitTarget(span, { bars: times.map(bar) });
+        ([interval, seconds], times) => {
+          const target = fitTarget(interval, times.map(bar));
           return (
             target !== null &&
-            target !== "content" &&
             target.to === times[times.length - 1] &&
             target.to - target.from === 30 * seconds
           );
@@ -87,10 +75,6 @@ describe("dollars", () => {
 });
 
 describe("axisLabel", () => {
-  it("shows the raw height for ticks", () => {
-    expect(axisLabel("tick", 42 as UTCTimestamp)).toBe("42");
-  });
-
   it("shows local hours and minutes for bars", () => {
     const time = (new Date(2024, 0, 15, 9, 5).getTime() / 1000) as UTCTimestamp;
     expect(axisLabel("1m", time)).toBe("09:05");
@@ -107,7 +91,7 @@ describe("axisLabel", () => {
 
   it("returns nothing for non-numeric times", () => {
     expect(axisLabel("1m", "2024-01-15")).toBe("");
-    expect(axisLabel("tick", { year: 2024, month: 1, day: 15 })).toBe("");
+    expect(axisLabel("1m", { year: 2024, month: 1, day: 15 })).toBe("");
   });
 
   it("zero-pads any local hour and minute", () => {
@@ -157,18 +141,18 @@ describe("planDraw", () => {
   });
 
   it("follows a window that drops old points off the front", () => {
-    const drawn = { key: "BTC:tick", last: 5, count: 5 };
-    expect(planDraw(drawn, "BTC:tick", at(4, 5, 6))).toMatchObject({
+    const drawn = { key: "BTC:1s", last: 5, count: 5 };
+    expect(planDraw(drawn, "BTC:1s", at(4, 5, 6))).toMatchObject({
       kind: "append",
       from: 1,
     });
   });
 
   it("starts over when the last drawn point is gone or the chart grew too long", () => {
-    const drawn = { key: "BTC:tick", last: 5, count: 5 };
-    expect(planDraw(drawn, "BTC:tick", at(6, 7)).kind).toBe("reset");
-    expect(planDraw(drawn, "BTC:tick", []).kind).toBe("reset");
-    const long = { key: "BTC:tick", last: 2, count: 500 };
-    expect(planDraw(long, "BTC:tick", at(1, 2)).kind).toBe("reset");
+    const drawn = { key: "BTC:1s", last: 5, count: 5 };
+    expect(planDraw(drawn, "BTC:1s", at(6, 7)).kind).toBe("reset");
+    expect(planDraw(drawn, "BTC:1s", []).kind).toBe("reset");
+    const long = { key: "BTC:1s", last: 2, count: 500 };
+    expect(planDraw(long, "BTC:1s", at(1, 2)).kind).toBe("reset");
   });
 });
