@@ -20,7 +20,14 @@ from pydantic import ConfigDict, RootModel
 from core.state import State
 from core.types import QC, Block, Fill, FundingEvent, Market, OrderEvent, Snapshot, encode
 
-INTERVALS = {"1s": 1_000, "1m": 60_000, "5m": 300_000, "1h": 3_600_000}
+INTERVALS = {
+    "1s": 1_000,
+    "3s": 3_000,
+    "15s": 15_000,
+    "1m": 60_000,
+    "5m": 300_000,
+    "1h": 3_600_000,
+}
 _JSON = ConfigDict(strict=True, val_json_bytes="hex", ser_json_bytes="hex")
 Row = dict[str, object]
 Cursor = tuple[int, int, int]

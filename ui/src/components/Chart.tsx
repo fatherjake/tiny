@@ -15,7 +15,16 @@ import {
 import { useSeries } from "../hooks/useMarket";
 import { usePositionLines } from "../hooks/usePositionLines";
 import type { Series } from "../types";
-import { SPANS, type Span, axisLabel, dollars, fitTarget } from "./Chart.utils";
+import {
+  type Drawn,
+  SPANS,
+  type Span,
+  axisLabel,
+  dollars,
+  fitTarget,
+  planDraw,
+  sameRow,
+} from "./Chart.utils";
 
 type Plot = {
   chart: IChartApi;
@@ -31,12 +40,18 @@ type Props = {
 
 export function Chart({ market, trader, picked }: Props) {
   const [span, setSpan] = useState<Span>("1m");
-  const points = useSeries(market, span === "tick" ? "1m" : span);
+  const points = useSeries(
+    market,
+    span === "tick" ? "1m" : span,
+    span === "tick",
+  );
   const lines = usePositionLines(trader, picked === market ? market : "");
   const host = useRef<HTMLDivElement>(null);
   const api = useRef<Plot | null>(null);
   const spanRef = useRef(span);
   const fitted = useRef<string | null>(null);
+  const drawn = useRef<Drawn>({ key: "", last: null, count: 0 });
+  const shown = useRef<object | undefined>(undefined);
   spanRef.current = span;
 
   useEffect(() => {
@@ -78,6 +93,9 @@ export function Chart({ market, trader, picked }: Props) {
         horzLine: { color: "#000", labelBackgroundColor: "#000" },
       },
     });
+    drawn.current = { key: "", last: null, count: 0 };
+    shown.current = undefined;
+    fitted.current = null;
     api.current = {
       chart,
       candles: chart.addSeries(CandlestickSeries, {
@@ -123,21 +141,41 @@ export function Chart({ market, trader, picked }: Props) {
     const plot = api.current;
     if (!plot) return;
     const ticks = span === "tick";
-    const candles = points.bars;
-    const count = ticks ? (points.ticks?.length ?? 0) : (candles?.length ?? 0);
-    plot.candles.setData(
-      ticks || !candles
-        ? []
-        : candles.map((bar) => ({ ...bar, time: bar.time as UTCTimestamp })),
-    );
-    plot.line.setData(
-      ticks
-        ? (points.ticks ?? []).map((point) => ({
+    const data: { time: number }[] = (ticks ? points.ticks : points.bars) ?? [];
+    const count = data.length;
+    const plan = planDraw(drawn.current, market + ":" + span, data);
+    const tail = data[data.length - 1];
+    if (plan.kind === "reset") {
+      if (ticks) {
+        plot.candles.setData([]);
+        plot.line.setData(
+          (points.ticks ?? []).map((point) => ({
             ...point,
             time: point.time as UTCTimestamp,
-          }))
-        : [],
-    );
+          })),
+        );
+      } else {
+        plot.line.setData([]);
+        plot.candles.setData(
+          (points.bars ?? []).map((bar) => ({
+            ...bar,
+            time: bar.time as UTCTimestamp,
+          })),
+        );
+      }
+    } else if (plan.from < data.length - 1 || !sameRow(tail, shown.current)) {
+      for (let i = plan.from; i < data.length; i++) {
+        if (ticks) {
+          const point = points.ticks![i];
+          plot.line.update({ ...point, time: point.time as UTCTimestamp });
+        } else {
+          const bar = points.bars![i];
+          plot.candles.update({ ...bar, time: bar.time as UTCTimestamp });
+        }
+      }
+    }
+    drawn.current = plan.drawn;
+    shown.current = tail;
     const key = market + ":" + span + ":" + (count > 0);
     if (fitted.current !== key) {
       fitted.current = key;

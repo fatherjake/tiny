@@ -75,3 +75,19 @@ export function seed(book: Series, rows: SeedRow[]): Series {
   }
   return changed ? { ...book, ticks } : book;
 }
+
+export const MAX_TICKS = 10_000;
+
+type Tick = NonNullable<Series["ticks"]>[number];
+
+export function extendTicks(
+  prev: Tick[],
+  rows: SeedRow[],
+  max = MAX_TICKS,
+): Tick[] {
+  if (rows.length === 0) return prev;
+  const last = prev[prev.length - 1];
+  const base = last && rows[0].height < last.time ? [] : prev;
+  const ticks = seed({ ticks: base }, rows).ticks ?? base;
+  return ticks.length > max ? ticks.slice(-max) : ticks;
+}

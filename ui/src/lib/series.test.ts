@@ -1,7 +1,13 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
-import { applyCandles, seed, spreadMid, type CandleRow } from "./series";
+import {
+  applyCandles,
+  extendTicks,
+  seed,
+  spreadMid,
+  type CandleRow,
+} from "./series";
 
 describe("applyCandles", () => {
   it("builds open high low close in time order, at the block time", () => {
@@ -262,5 +268,38 @@ describe("series properties", () => {
         },
       ),
     );
+  });
+});
+
+describe("extendTicks", () => {
+  const print = (height: number, price: number) => ({
+    height,
+    price: String(price * 1_000_000),
+  });
+
+  it("keeps history older than the trades it was just given", () => {
+    const first = extendTicks([], [print(2, 11), print(1, 10)]);
+    const next = extendTicks(first, [print(4, 13), print(3, 12)]);
+    expect(next.map((t) => t.time)).toEqual([1, 2, 3, 4]);
+  });
+
+  it("moves the newest point when more trades land in the same block", () => {
+    const first = extendTicks([], [print(2, 11), print(1, 10)]);
+    expect(extendTicks(first, [print(2, 15), print(2, 11)]).at(-1)).toEqual({
+      time: 2,
+      value: 15,
+    });
+  });
+
+  it("starts again when the trades jump backwards, such as after a resync", () => {
+    const fake = extendTicks([], [print(900, 1)]);
+    expect(extendTicks(fake, [print(5, 2)])).toEqual([{ time: 5, value: 2 }]);
+  });
+
+  it("keeps the same array when nothing new arrived and caps its length", () => {
+    const first = extendTicks([], [print(1, 10)]);
+    expect(extendTicks(first, [])).toBe(first);
+    const many = Array.from({ length: 10 }, (_, i) => print(10 - i, 1));
+    expect(extendTicks([], many, 4).map((t) => t.time)).toEqual([7, 8, 9, 10]);
   });
 });

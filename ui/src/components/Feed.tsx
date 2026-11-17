@@ -9,7 +9,7 @@ export function Feed({ blocks }: { blocks: BlockMsg[] }) {
   for (const block of pause.rows) {
     const txs = block.txs ?? [];
     rows.push(
-      <tr key={"b" + block.height}>
+      <tr key={"b" + block.hash}>
         <td>{block.height}</td>
         <td className="l">{short(block.hash)}</td>
         <td className="l" colSpan={2}>
@@ -19,7 +19,7 @@ export function Feed({ blocks }: { blocks: BlockMsg[] }) {
     );
     txs.forEach((tx, i) => {
       rows.push(
-        <tr key={block.height + "-" + i}>
+        <tr key={block.hash + "-" + i}>
           <td></td>
           <td className="l">{tx.kind}</td>
           <td className="l">{short(tx.signer)}</td>

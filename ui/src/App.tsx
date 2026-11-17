@@ -1,4 +1,10 @@
-import { type CSSProperties, useCallback, useState } from "react";
+import {
+  type CSSProperties,
+  lazy,
+  Suspense,
+  useCallback,
+  useState,
+} from "react";
 import { Chart } from "./components/Chart";
 import { Dock, type DockTab } from "./components/Dock";
 import { Header } from "./components/Header";
@@ -12,6 +18,14 @@ import { useTraderSession } from "./hooks/useTraderSession";
 import { unscale } from "./lib/scale";
 import type { OrderDraft, Scaled } from "./types";
 import { dockHeight, firstName, saveDock, savedDock } from "./App.utils";
+
+const PerfPanel = import.meta.env.DEV
+  ? lazy(() =>
+      import("./components/PerfPanel").then((mod) => ({
+        default: mod.PerfPanel,
+      })),
+    )
+  : null;
 
 export function App() {
   const ws = useMarketStream();
@@ -100,6 +114,11 @@ export function App() {
           saveDock(next);
         }}
       />
+      {PerfPanel ? (
+        <Suspense fallback={null}>
+          <PerfPanel market={selected} />
+        </Suspense>
+      ) : null}
     </div>
   );
 }

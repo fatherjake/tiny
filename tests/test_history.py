@@ -102,6 +102,11 @@ def test_trade_and_order_routes_page_by_cursor() -> None:
         {"ts": 1_000, "open": PX, "high": PX, "low": PX, "close": PX, "volume": ONE},
         {"ts": 60_000, "open": PX, "high": PX, "low": PX, "close": PX, "volume": ONE},
     ]
+    for interval in ("3s", "15s"):
+        assert routes["/candles/{market}"]("BTC-PERP", interval=interval) == [
+            {"ts": 0, "open": PX, "high": PX, "low": PX, "close": PX, "volume": ONE},
+            {"ts": 60_000, "open": PX, "high": PX, "low": PX, "close": PX, "volume": ONE},
+        ]
     assert routes["/funding/{market}"]("BTC-PERP") == []
     with pytest.raises(HTTPException) as bad_cursor:
         routes["/trades/{market}"]("BTC-PERP", before_height=1)
