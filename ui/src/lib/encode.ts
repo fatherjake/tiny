@@ -17,8 +17,7 @@ export function bytesToHex(bytes: Iterable<number>): string {
 function quote(text: string): string {
   let out = '"';
   for (const ch of text) {
-    const c = ch.codePointAt(0);
-    if (c === undefined) throw new Error("bad code point");
+    const c = ch.codePointAt(0) as number;
     if (ch === '"') out += '\\"';
     else if (ch === "\\") out += "\\\\";
     else if (ch === "\b") out += "\\b";
