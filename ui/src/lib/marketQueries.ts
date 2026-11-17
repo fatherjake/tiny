@@ -79,7 +79,10 @@ export const marketsQuery = queryOptions({
 export const booksQuery = queryOptions({
   queryKey: marketKeys.books,
   queryFn: async ({ client, signal }) => {
-    const markets = await client.ensureQueryData(marketsQuery);
+    const markets = await client.query({
+      ...marketsQuery,
+      staleTime: "static",
+    });
     const books = await Promise.all(
       markets.map(
         async (market) =>

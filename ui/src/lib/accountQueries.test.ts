@@ -62,7 +62,7 @@ describe("accountQuery", () => {
     const urls = serve(() => Response.json(view));
     const qc = client();
 
-    await qc.fetchQuery(accountQuery("ab"));
+    await qc.query(accountQuery("ab"));
 
     expect(urls).toEqual(["/account/ab"]);
     expect(qc.getQueryData(["account", "ab", "view"])).toEqual(view);
@@ -72,19 +72,19 @@ describe("accountQuery", () => {
     serve(() => new Response("", { status: 404 }));
     const qc = client();
 
-    expect(await qc.fetchQuery(accountQuery("ab"))).toBeNull();
+    expect(await qc.query(accountQuery("ab"))).toBeNull();
     expect(qc.getQueryState(["account", "ab", "view"])?.status).toBe("success");
   });
 
   it("fails on any other error status", async () => {
     serve(() => new Response("", { status: 500 }));
-    await expect(client().fetchQuery(accountQuery("ab"))).rejects.toThrow(
+    await expect(client().query(accountQuery("ab"))).rejects.toThrow(
       "/account answered 500",
     );
   });
   it("encodes the trader in the account URL", async () => {
     const urls = serve(() => Response.json(null));
-    await client().fetchQuery(accountQuery("a/b?c"));
+    await client().query(accountQuery("a/b?c"));
     expect(urls).toEqual(["/account/a%2Fb%3Fc"]);
   });
 });
@@ -94,7 +94,7 @@ describe("openOrdersQuery", () => {
     const urls = serve(() => Response.json([order(7, 2_000_000)]));
     const qc = client();
 
-    await qc.fetchQuery(openOrdersQuery("a b/c"));
+    await qc.query(openOrdersQuery("a b/c"));
 
     expect(urls).toEqual(["/accounts/a%20b%2Fc/orders?status=open"]);
     expect(qc.getQueryData(["account", "a b/c", "open"])).toEqual([
@@ -114,7 +114,7 @@ describe("openOrdersQuery", () => {
         fc.array(fc.tuple(fc.nat(), fc.nat())),
         async (pairs) => {
           serve(() => Response.json(pairs.map(([id, rem]) => order(id, rem))));
-          const open = await client().fetchQuery(openOrdersQuery("ab"));
+          const open = await client().query(openOrdersQuery("ab"));
           expect(open.map((row) => [row.id, row.size])).toEqual(pairs);
         },
       ),
@@ -123,7 +123,7 @@ describe("openOrdersQuery", () => {
 
   it("fails with the URL and status", async () => {
     serve(() => new Response("", { status: 503 }));
-    await expect(client().fetchQuery(openOrdersQuery("ab"))).rejects.toThrow(
+    await expect(client().query(openOrdersQuery("ab"))).rejects.toThrow(
       "/accounts/ab/orders?status=open answered 503",
     );
   });
@@ -135,7 +135,7 @@ describe("orderHistoryQuery", () => {
     const urls = serve(() => Response.json(rows));
     const qc = client();
 
-    await qc.fetchQuery(orderHistoryQuery("ab"));
+    await qc.query(orderHistoryQuery("ab"));
 
     expect(urls).toEqual(["/accounts/ab/orders?status=history&limit=50"]);
     expect(qc.getQueryData(["account", "ab", "history"])).toEqual(rows);
@@ -147,7 +147,7 @@ describe("fillsQuery", () => {
     const urls = serve(() => Response.json([fill]));
     const qc = client();
 
-    await qc.fetchQuery(fillsQuery("ab"));
+    await qc.query(fillsQuery("ab"));
 
     expect(urls).toEqual(["/accounts/ab/fills?limit=50"]);
     expect(qc.getQueryData(["account", "ab", "fills"])).toEqual([fill]);
@@ -159,7 +159,7 @@ describe("account URLs", () => {
     await fc.assert(
       fc.asyncProperty(fc.string(), async (trader) => {
         const urls = serve(() => Response.json([]));
-        await client().fetchQuery(fillsQuery(trader));
+        await client().query(fillsQuery(trader));
         const match = /^\/accounts\/([^/?#]*)\/fills\?limit=50$/.exec(urls[0]);
         expect(match).not.toBeNull();
         expect(decodeURIComponent(match![1])).toBe(trader);
@@ -173,11 +173,11 @@ describe("account URLs", () => {
     );
     const qc = client();
     await Promise.all([
-      qc.prefetchQuery(accountQuery("ab")),
-      qc.prefetchQuery(openOrdersQuery("ab")),
-      qc.prefetchQuery(orderHistoryQuery("ab")),
-      qc.prefetchQuery(fillsQuery("ab")),
-      qc.prefetchQuery(fillsQuery("cd")),
+      qc.query(accountQuery("ab")),
+      qc.query(openOrdersQuery("ab")),
+      qc.query(orderHistoryQuery("ab")),
+      qc.query(fillsQuery("ab")),
+      qc.query(fillsQuery("cd")),
     ]);
     urls.length = 0;
 

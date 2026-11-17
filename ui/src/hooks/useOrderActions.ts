@@ -22,7 +22,7 @@ export function useOrderActions(key: TraderKey | null) {
   const accountNonce = useAccountSelect(trader, nonceOf) ?? 0;
   const history = useOrderHistory(trader);
   const refreshAccount = () =>
-    trader ? client.fetchQuery(accountQuery(trader)) : Promise.resolve(null);
+    trader ? client.query(accountQuery(trader)) : Promise.resolve(null);
   const [pending, setPending] = useState(false);
   const [note, setNote] = useState("");
   const [bad, setBad] = useState(false);

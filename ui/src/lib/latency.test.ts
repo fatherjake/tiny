@@ -80,17 +80,17 @@ describe("inclusionMs", () => {
 describe("stream queries", () => {
   it("start empty, hold what the stream writes, and never fetch on their own", async () => {
     const client = new QueryClient();
-    expect(await client.fetchQuery(lastBlockQuery)).toBeNull();
+    expect(await client.query(lastBlockQuery)).toBeNull();
     client.setQueryData(lastBlockQuery.queryKey, 1_700_000_000_000);
     client.setQueryData(inclusionQuery.queryKey, 42);
-    expect(await client.fetchQuery(lastBlockQuery)).toBe(1_700_000_000_000);
-    expect(await client.fetchQuery(inclusionQuery)).toBe(42);
+    expect(await client.query(lastBlockQuery)).toBe(1_700_000_000_000);
+    expect(await client.query(inclusionQuery)).toBe(42);
   });
 
   it("reset to empty when forced to refetch", async () => {
     const client = new QueryClient();
-    await client.fetchQuery(inclusionQuery);
-    await client.fetchQuery(lastBlockQuery);
+    await client.query(inclusionQuery);
+    await client.query(lastBlockQuery);
     client.setQueryData(inclusionQuery.queryKey, 42);
     client.setQueryData(lastBlockQuery.queryKey, 7);
     await client.refetchQueries({ queryKey: ["stream"] });
