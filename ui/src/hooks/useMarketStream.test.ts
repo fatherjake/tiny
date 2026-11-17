@@ -5,6 +5,7 @@ import { createElement, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { markSent } from "../lib/latency";
+import { flushTrades } from "../lib/stream";
 import type { BlockMsg, Trade, WsMessage } from "../types";
 import { useMarketStream } from "./useMarketStream";
 
@@ -45,10 +46,15 @@ function stream() {
   const push = (...msgs: WsMessage[]) =>
     act(() => {
       for (const msg of msgs) socket.onmessage?.({ data: JSON.stringify(msg) });
+      flushTrades(client);
+    });
+  const pushLive = (...msgs: WsMessage[]) =>
+    act(() => {
+      for (const msg of msgs) socket.onmessage?.({ data: JSON.stringify(msg) });
     });
   const stale = (key: readonly unknown[]) =>
     client.getQueryState(key)?.isInvalidated ?? null;
-  return { ...hook, client, socket, push, stale };
+  return { ...hook, client, socket, push, pushLive, stale };
 }
 
 const block = (height: number, extra: Partial<BlockMsg> = {}): BlockMsg => ({
@@ -182,6 +188,32 @@ describe("useMarketStream", () => {
     client.setQueryData(["market", "trades", "BTC"], [print(1)]);
     push({ type: "trade", ...print(2) }, { type: "trade", ...print(2) });
     expect(client.getQueryData(["market", "trades", "BTC"])).toEqual([
+      print(2),
+      print(1),
+    ]);
+  });
+
+  it("holds trades until the next frame, then lands them in one update", () => {
+    const { client, pushLive } = stream();
+    client.setQueryData(["market", "trades", "BTC"], [print(1)]);
+    let updates = 0;
+    const off = client.getQueryCache().subscribe((event) => {
+      if (event.type === "updated") updates++;
+    });
+    pushLive(
+      { type: "trade", ...print(2) },
+      { type: "trade", ...print(3) },
+      { type: "trade", ...print(4) },
+    );
+    expect(client.getQueryData(["market", "trades", "BTC"])).toEqual([
+      print(1),
+    ]);
+    act(() => flushTrades(client));
+    off();
+    expect(updates).toBe(1);
+    expect(client.getQueryData(["market", "trades", "BTC"])).toEqual([
+      print(4),
+      print(3),
       print(2),
       print(1),
     ]);

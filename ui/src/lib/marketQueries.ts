@@ -34,7 +34,13 @@ export const feedQuery = queryOptions({
 });
 
 export const TICK_TRADES = 2_000;
-export const INTERVAL_MS = { "1m": 60_000, "5m": 300_000 } as const;
+export const INTERVAL_MS = {
+  "1s": 1_000,
+  "3s": 3_000,
+  "15s": 15_000,
+  "1m": 60_000,
+  "5m": 300_000,
+} as const;
 export type Interval = keyof typeof INTERVAL_MS;
 const PAGE = 500;
 

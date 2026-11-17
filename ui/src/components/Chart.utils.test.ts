@@ -4,7 +4,13 @@ import { describe, expect, it } from "vitest";
 
 import { usd } from "../lib/scale";
 import type { Candle } from "../types";
-import { axisLabel, dollars, fitTarget } from "./Chart.utils";
+import {
+  axisLabel,
+  dollars,
+  type Drawn,
+  fitTarget,
+  planDraw,
+} from "./Chart.utils";
 
 const bar = (time: number): Candle => ({
   time,
@@ -91,6 +97,14 @@ describe("axisLabel", () => {
     expect(axisLabel("5m", time)).toBe("09:05");
   });
 
+  it("adds seconds for second bars", () => {
+    const time = (new Date(2024, 0, 15, 9, 5, 7).getTime() /
+      1000) as UTCTimestamp;
+    expect(axisLabel("1s", time)).toBe("09:05:07");
+    expect(axisLabel("15s", time)).toBe("09:05:07");
+    expect(axisLabel("1m", time)).toBe("09:05");
+  });
+
   it("returns nothing for non-numeric times", () => {
     expect(axisLabel("1m", "2024-01-15")).toBe("");
     expect(axisLabel("tick", { year: 2024, month: 1, day: 15 })).toBe("");
@@ -115,5 +129,46 @@ describe("axisLabel", () => {
         },
       ),
     );
+  });
+});
+
+describe("planDraw", () => {
+  const at = (...times: number[]) => times.map((time) => ({ time }));
+  const none: Drawn = { key: "", last: null, count: 0 };
+
+  it("draws everything the first time and when the market or span changes", () => {
+    expect(planDraw(none, "BTC:1m", at(1, 2)).kind).toBe("reset");
+    const drawn = { key: "BTC:1m", last: 2, count: 2 };
+    expect(planDraw(drawn, "BTC:5m", at(1, 2)).kind).toBe("reset");
+  });
+
+  it("only redraws from the last point it drew", () => {
+    const drawn = { key: "BTC:1m", last: 2, count: 2 };
+    expect(planDraw(drawn, "BTC:1m", at(1, 2))).toEqual({
+      kind: "append",
+      from: 1,
+      drawn,
+    });
+    expect(planDraw(drawn, "BTC:1m", at(1, 2, 3, 4))).toEqual({
+      kind: "append",
+      from: 1,
+      drawn: { key: "BTC:1m", last: 4, count: 4 },
+    });
+  });
+
+  it("follows a window that drops old points off the front", () => {
+    const drawn = { key: "BTC:tick", last: 5, count: 5 };
+    expect(planDraw(drawn, "BTC:tick", at(4, 5, 6))).toMatchObject({
+      kind: "append",
+      from: 1,
+    });
+  });
+
+  it("starts over when the last drawn point is gone or the chart grew too long", () => {
+    const drawn = { key: "BTC:tick", last: 5, count: 5 };
+    expect(planDraw(drawn, "BTC:tick", at(6, 7)).kind).toBe("reset");
+    expect(planDraw(drawn, "BTC:tick", []).kind).toBe("reset");
+    const long = { key: "BTC:tick", last: 2, count: 500 };
+    expect(planDraw(long, "BTC:tick", at(1, 2)).kind).toBe("reset");
   });
 });
