@@ -116,7 +116,7 @@ describe("pnlShare", () => {
     expect(pnlShare(-5n, 0n)).toBe("-");
   });
 
-  it.fails("shows a plain dash for a positive pnl with no margin", () => {
+  it("shows a plain dash for a positive pnl with no margin", () => {
     expect(pnlShare(1n, 0n)).toBe("-");
   });
 

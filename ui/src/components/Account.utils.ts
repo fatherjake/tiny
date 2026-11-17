@@ -19,7 +19,7 @@ export function pnlTone(pnl: bigint | null): string {
 
 export function pnlShare(pnl: bigint | null, margin: bigint | null): string {
   const share = pctShort(pnl, margin);
-  return pnl != null && pnl > 0n ? "+" + share : share;
+  return pnl != null && pnl > 0n && share !== "-" ? "+" + share : share;
 }
 
 export function positionSide(size: bigint): string {
