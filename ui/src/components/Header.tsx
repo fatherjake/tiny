@@ -7,34 +7,14 @@ import {
   useMarketsSelect,
   useStatus,
 } from "../hooks/useMarket";
-import { bi, pct, short, usd } from "../lib/scale";
-import type { MarketInfo } from "../types";
+import { short, usd } from "../lib/scale";
+import { annual, names, sinceLabel } from "./Header.utils";
 
 type Props = {
   ws: string;
   selected: string;
   onSelect: (name: string) => void;
 };
-
-const names = (markets: MarketInfo[]) => markets.map((item) => item.name);
-
-const YEAR_MS = 365n * 24n * 3_600_000n;
-
-function annual(market: MarketInfo | null): string {
-  const base = market?.funding_base;
-  if (
-    !market ||
-    !base ||
-    market.funding_ts == null ||
-    market.funding_index == null
-  )
-    return "-";
-  if (market.oracle_price == null) return "-";
-  const elapsed = BigInt(market.funding_ts - base.ts);
-  if (elapsed <= 0n) return "-";
-  const paid = bi(market.funding_index) - bi(base.index);
-  return pct(paid * YEAR_MS, bi(market.oracle_price) * elapsed);
-}
 
 function SinceBlock() {
   const at = useLastBlockAt();
@@ -43,8 +23,7 @@ function SinceBlock() {
     const id = window.setInterval(() => setNow(Date.now()), 200);
     return () => window.clearInterval(id);
   }, []);
-  const ago =
-    at == null ? "-" : (Math.max(0, now - at) / 1000).toFixed(1) + "s";
+  const ago = sinceLabel(at, now);
   return (
     <span title="since the last block arrived">
       <b>block</b> {ago}
@@ -81,7 +60,7 @@ export function Header({ ws, selected, onSelect }: Props) {
           <b>oracle</b> {usd(market?.oracle_price)}
         </span>
         <span>
-          <b>funding</b> {annual(market)} APR
+          <b>funding 1h</b> {annual(market)} APR
         </span>
       </div>
       <div className="quote">

@@ -1,8 +1,15 @@
 import { useFlash } from "../hooks/useFlash";
 import { useMarkets } from "../hooks/useMarket";
 import { entryPrice, positionRisk, positionValue } from "../lib/orders";
-import { SCALE, bi, fmtSign, pctShort, usd, usdSign } from "../lib/scale";
+import { bi, fmtSign, pctShort, usd, usdSign } from "../lib/scale";
 import type { AccountView, Position, Scaled } from "../types";
+import {
+  pnlShare,
+  pnlTone,
+  positionSide,
+  sortPositions,
+  upnl,
+} from "./Account.utils";
 
 export type Pick = {
   picked: string | null;
@@ -15,15 +22,6 @@ type Props = {
   pick?: Pick;
 };
 
-function upnl(pos: Position, mark: Scaled | null | undefined): bigint | null {
-  if (mark == null) return null;
-  const size = bi(pos.size);
-  const abs = size < 0n ? -size : size;
-  const notional = (abs * bi(mark)) / SCALE;
-  const entry = bi(pos.entry_notional);
-  return size > 0n ? notional - entry : entry - notional;
-}
-
 function PnlCell({
   pnl,
   margin,
@@ -32,23 +30,20 @@ function PnlCell({
   margin: bigint | null;
 }) {
   const flash = useFlash(pnl == null ? null : pnl > 0n ? 1n : -1n);
-  const tone = pnl == null || pnl === 0n ? "" : pnl > 0n ? "up" : "down";
-  const share = pctShort(pnl, margin);
+  const tone = pnlTone(pnl);
   return (
     <td className={[tone, flash].filter(Boolean).join(" ")}>
-      {usdSign(pnl)} {pnl != null && pnl > 0n ? "+" + share : share}
+      {usdSign(pnl)} {pnlShare(pnl, margin)}
     </td>
   );
 }
 
 export function Account({ account, onClose, pick }: Props) {
   const markets = useMarkets();
-  const positions = Object.values(account?.positions ?? {}).sort((a, b) =>
-    String(a.market).localeCompare(String(b.market)),
-  );
+  const positions = sortPositions(account?.positions);
   const collateral = bi(account?.collateral ?? 0);
   return (
-    <section className="pad grow">
+    <section className="grow">
       <table>
         <thead>
           <tr>
@@ -64,7 +59,7 @@ export function Account({ account, onClose, pick }: Props) {
           {positions.length ? (
             positions.map((pos) => {
               const size = bi(pos.size);
-              const side = size > 0n ? "B" : size < 0n ? "S" : "";
+              const side = positionSide(size);
               const market = markets.find((item) => item.name === pos.market);
               const mark: Scaled | null = market?.mark_price ?? null;
               const pnl = upnl(pos, mark);

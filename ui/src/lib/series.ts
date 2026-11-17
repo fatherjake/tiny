@@ -52,7 +52,6 @@ export function applyCandles(book: Series, rows: CandleRow[]): Series {
       close: Number(bi(row.close)) / 1e6,
     };
     const last = lastOf(bars);
-    if (last && time < last.time) continue;
     if (last && time === last.time) bars[bars.length - 1] = bar;
     else bars.push(bar);
   }

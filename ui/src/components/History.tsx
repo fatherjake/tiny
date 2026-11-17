@@ -1,15 +1,19 @@
+import { usePause } from "../hooks/usePause";
 import { fillSide } from "../lib/orders";
-import { fmt, pct, usd } from "../lib/scale";
+import { fmt, usd, usdSign } from "../lib/scale";
 import type {
   FundingRow,
   MarketInfo,
   StoredOrder,
   StoredTrade,
 } from "../types";
+import { fundingApr, fundingDelta } from "./History.utils";
+import { PausePill } from "./PausePill";
 
 export function OrderHistory({ orders }: { orders: StoredOrder[] }) {
+  const pause = usePause(orders);
   return (
-    <section className="pad grow">
+    <section ref={pause.ref} onScroll={pause.onScroll} className="grow">
       <table>
         <thead>
           <tr>
@@ -22,8 +26,8 @@ export function OrderHistory({ orders }: { orders: StoredOrder[] }) {
           </tr>
         </thead>
         <tbody>
-          {orders.length ? (
-            orders.map((order) => (
+          {pause.rows.length ? (
+            pause.rows.map((order) => (
               <tr key={order.order_id}>
                 <td className="l">{order.market}</td>
                 <td>{String(order.order_id)}</td>
@@ -45,6 +49,7 @@ export function OrderHistory({ orders }: { orders: StoredOrder[] }) {
           )}
         </tbody>
       </table>
+      <PausePill paused={pause.paused} onResume={pause.resume} />
     </section>
   );
 }
@@ -56,8 +61,9 @@ export function Fills({
   rows: StoredTrade[];
   trader: string;
 }) {
+  const pause = usePause(rows);
   return (
-    <section className="pad grow">
+    <section ref={pause.ref} onScroll={pause.onScroll} className="grow">
       <table>
         <thead>
           <tr>
@@ -69,8 +75,8 @@ export function Fills({
           </tr>
         </thead>
         <tbody>
-          {rows.length ? (
-            rows.map((row) => {
+          {pause.rows.length ? (
+            pause.rows.map((row) => {
               const side = fillSide(row, trader);
               return (
                 <tr key={row.id}>
@@ -93,6 +99,7 @@ export function Fills({
           )}
         </tbody>
       </table>
+      <PausePill paused={pause.paused} onResume={pause.resume} />
     </section>
   );
 }
@@ -104,30 +111,35 @@ export function Funding({
   rows: FundingRow[];
   markets: MarketInfo[];
 }) {
+  const pause = usePause(rows);
   return (
-    <section className="pad grow">
+    <section ref={pause.ref} onScroll={pause.onScroll} className="feed">
       <table>
         <thead>
           <tr>
-            <td>h</td>
+            <td>delta</td>
+            <td>rate APR</td>
             <td>index</td>
-            <td>rate</td>
           </tr>
         </thead>
         <tbody>
-          {rows.length ? (
-            rows.map((row) => (
-              <tr key={row.market + ":" + row.height}>
-                <td>{row.height}</td>
-                <td>{usd(row.index)}</td>
-                <td>
-                  {pct(
-                    row.rate,
-                    markets.find((m) => m.name === row.market)?.oracle_price,
-                  )}
-                </td>
-              </tr>
-            ))
+          {pause.rows.length ? (
+            pause.rows.map((row, i) => {
+              const delta = fundingDelta(row, pause.rows[i + 1]);
+              const tone =
+                delta == null || delta === 0n
+                  ? undefined
+                  : delta > 0n
+                    ? "up"
+                    : "down";
+              return (
+                <tr key={row.market + ":" + row.height}>
+                  <td className={tone}>{usdSign(delta)}</td>
+                  <td>{fundingApr(row, pause.rows[i + 1], markets)}</td>
+                  <td>{usd(row.index)}</td>
+                </tr>
+              );
+            })
           ) : (
             <tr>
               <td className="l" colSpan={3}>
@@ -137,6 +149,7 @@ export function Funding({
           )}
         </tbody>
       </table>
+      <PausePill paused={pause.paused} onResume={pause.resume} />
     </section>
   );
 }

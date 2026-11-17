@@ -33,7 +33,6 @@ export function useWebSocket(
     let attempt = 0;
     let stopped = false;
     const connect = () => {
-      if (stopped) return;
       const proto = location.protocol === "https:" ? "wss:" : "ws:";
       ws = new WebSocket(proto + "//" + location.host + path);
       ws.onopen = () => {

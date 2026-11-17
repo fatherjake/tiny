@@ -41,7 +41,9 @@ export const accountQuery = (trader: string) =>
   queryOptions({
     queryKey: accountKeys.view(trader),
     queryFn: async ({ signal }) => {
-      const res = await fetch("/account/" + trader, { signal });
+      const res = await fetch("/account/" + encodeURIComponent(trader), {
+        signal,
+      });
       if (res.status === 404) return null;
       if (!res.ok) throw new Error("/account answered " + res.status);
       return readJson<AccountView>(res);

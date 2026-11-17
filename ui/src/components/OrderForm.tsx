@@ -9,10 +9,11 @@ import { flushSync } from "react-dom";
 
 import { useAccount, useOpenOrders } from "../hooks/useAccount";
 import { useBook, useMarket, useMarkets } from "../hooks/useMarket";
-import { bpsPct, currentPrice, previewOrder } from "../lib/orders";
+import { currentPrice, previewOrder } from "../lib/orders";
 import { unscale, usd } from "../lib/scale";
 import { fieldOf, KEYS, shortcut } from "../lib/shortcuts";
 import type { OrderDraft } from "../types";
+import { baseAsset, feesLabel, orderToSend } from "./OrderForm.utils";
 
 const LEGEND_MS = 2_000;
 
@@ -100,19 +101,13 @@ export function OrderForm({
       window.clearTimeout(legendTimer.current);
     };
   }, []);
-  const base = market?.name.split("-")[0] ?? "";
+  const base = baseAsset(market);
   const preview = previewOrder(form, market, markets, book, account, orders);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (
-      !pending &&
-      !preview.problem &&
-      preview.size != null &&
-      preview.sendPrice != null
-    ) {
-      onSubmit(preview.size, preview.sendPrice);
-    }
+    const order = orderToSend(pending, preview);
+    if (order) onSubmit(order.size, order.price);
   };
   return (
     <form className="pad" onSubmit={submit}>
@@ -245,13 +240,7 @@ export function OrderForm({
       </div>
       <div className="row spread">
         <span>fees</span>
-        <span>
-          {market?.taker_fee_bps != null && market.maker_fee_bps != null
-            ? bpsPct(market.taker_fee_bps) +
-              " / " +
-              bpsPct(market.maker_fee_bps)
-            : "-"}
-        </span>
+        <span>{feesLabel(market)}</span>
       </div>
       {preview.problem && !preview.short ? <div>{preview.problem}</div> : null}
       <div className="muted stamp">

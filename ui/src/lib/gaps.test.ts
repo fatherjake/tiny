@@ -1,3 +1,4 @@
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
 import { advance, START, type StreamCursor } from "./gaps";
@@ -66,5 +67,70 @@ describe("advance", () => {
       false,
       false,
     ]);
+  });
+});
+
+describe("advance properties", () => {
+  it("never flags a run of consecutive blocks and trades from any start", () => {
+    fc.assert(
+      fc.property(
+        fc.nat(10 ** 6),
+        fc.nat(10 ** 6),
+        fc.array(fc.constantFrom("block", "trade", "book")),
+        (height, seq, kinds) => {
+          let h = height;
+          let s = seq;
+          const msgs = kinds.map((kind) =>
+            kind === "block"
+              ? block(h++)
+              : kind === "trade"
+                ? trade(s++)
+                : book,
+          );
+          expect(run(msgs)).toEqual(msgs.map(() => false));
+        },
+      ),
+    );
+  });
+
+  it("flags a block exactly when its height is not one past the last block", () => {
+    fc.assert(
+      fc.property(fc.array(fc.nat(20), { minLength: 1 }), (heights) => {
+        expect(run(heights.map(block))).toEqual(
+          heights.map((h, i) => i > 0 && h !== heights[i - 1] + 1),
+        );
+      }),
+    );
+  });
+
+  it("tracks blocks and trades independently, ignoring books", () => {
+    fc.assert(
+      fc.property(
+        fc.array(fc.nat(20)),
+        fc.array(fc.nat(20)),
+        fc.array(fc.nat(2)),
+        (heights, seqs, order) => {
+          const blocks = heights.map(block);
+          const trades = seqs.map(trade);
+          const mixed: WsMessage[] = [];
+          let b = 0;
+          let t = 0;
+          for (const pick of order) {
+            if (pick === 0 && b < blocks.length) mixed.push(blocks[b++]);
+            else if (pick === 1 && t < trades.length) mixed.push(trades[t++]);
+            else mixed.push(book);
+          }
+          mixed.push(...blocks.slice(b), ...trades.slice(t));
+          const flags = run(mixed);
+          const blockFlags = flags.filter((_, i) => mixed[i].type === "block");
+          const tradeFlags = flags.filter((_, i) => mixed[i].type === "trade");
+          expect(blockFlags).toEqual(run(blocks));
+          expect(tradeFlags).toEqual(run(trades));
+          expect(flags.filter((_, i) => mixed[i].type === "book")).toEqual(
+            mixed.filter((msg) => msg.type === "book").map(() => false),
+          );
+        },
+      ),
+    );
   });
 });

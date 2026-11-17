@@ -14,13 +14,8 @@ import {
 
 import { useSeries } from "../hooks/useMarket";
 import { usePositionLines } from "../hooks/usePositionLines";
-import { INTERVAL_MS, type Interval } from "../lib/marketQueries";
 import type { Series } from "../types";
-
-type Span = Interval | "tick";
-
-const SPANS: Span[] = ["1m", "5m", "tick"];
-const WINDOW_BARS = 30;
+import { SPANS, type Span, axisLabel, dollars, fitTarget } from "./Chart.utils";
 
 type Plot = {
   chart: IChartApi;
@@ -174,28 +169,14 @@ export function Chart({ market, trader, picked }: Props) {
 }
 
 function fitView(plot: Plot, span: Span, points: Series): void {
-  const candles = points.bars;
-  const last =
-    candles && candles.length > 0 ? candles[candles.length - 1].time : null;
+  const target = fitTarget(span, points);
   plot.chart.priceScale("right").applyOptions({ autoScale: true });
-  if (span !== "tick" && last != null) {
-    plot.chart.timeScale().setVisibleRange({
-      from: (last - (WINDOW_BARS * INTERVAL_MS[span]) / 1000) as UTCTimestamp,
-      to: last as UTCTimestamp,
-    });
-  } else if ((span === "tick" ? points.ticks : candles)?.length) {
+  if (target === "content") {
     plot.chart.timeScale().fitContent();
+  } else if (target) {
+    plot.chart.timeScale().setVisibleRange({
+      from: target.from as UTCTimestamp,
+      to: target.to as UTCTimestamp,
+    });
   }
-}
-
-function dollars(price: number): string {
-  return price.toLocaleString("en-US", { style: "currency", currency: "USD" });
-}
-
-function axisLabel(span: Span, time: Time): string {
-  if (typeof time !== "number") return "";
-  if (span === "tick") return String(time);
-  const date = new Date(time * 1000);
-  const pad = (part: number) => String(part).padStart(2, "0");
-  return pad(date.getHours()) + ":" + pad(date.getMinutes());
 }

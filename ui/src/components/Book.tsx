@@ -1,34 +1,21 @@
-import type { CSSProperties } from "react";
-
 import { useFlash } from "../hooks/useFlash";
 import { spreadMid } from "../lib/series";
-import { bi, fmt, usd } from "../lib/scale";
-import type { Depth, Level, Scaled } from "../types";
+import { fmt, usd } from "../lib/scale";
+import type { Depth, Scaled } from "../types";
+import {
+  type Row,
+  depthPct,
+  depthStyle,
+  maxTotal,
+  mineKey,
+  totals,
+} from "./Book.utils";
 
 type Props = {
   book: Depth | null;
   mine: Set<string>;
   onPrice: (price: Scaled) => void;
 };
-
-type Row = { price: Scaled; size: bigint; total: bigint };
-
-function totals(rows: Level[]): Row[] {
-  let sum = 0n;
-  return rows.map((level) => {
-    const size = bi(level[1]);
-    sum += size;
-    return { price: level[0], size, total: sum };
-  });
-}
-
-function depthStyle(pct: number): CSSProperties {
-  return { "--w": pct + "%" } as CSSProperties;
-}
-
-export function mineKey(side: "ask" | "bid", price: Scaled): string {
-  return side + ":" + bi(price).toString();
-}
 
 function LevelRow({
   row,
@@ -65,12 +52,9 @@ function LevelRow({
 export function Book({ book, mine, onPrice }: Props) {
   const askRows = totals(book?.asks ?? []).reverse();
   const bidRows = totals(book?.bids ?? []);
-  let max = 1n;
-  for (const row of askRows.concat(bidRows))
-    if (row.total > max) max = row.total;
+  const max = maxTotal(askRows.concat(bidRows));
   const levelRow = (row: Row, side: "ask" | "bid", key: string) => {
-    let pct = Number((row.total * 100n) / max);
-    if (row.total > 0n && pct < 1) pct = 1;
+    const pct = depthPct(row.total, max);
     return (
       <LevelRow
         key={key}

@@ -20,7 +20,7 @@ async function errorText(res: Response): Promise<string> {
     return text || String(res.status);
   }
   if (typeof body !== "object" || body === null || !("detail" in body)) {
-    return text || String(res.status);
+    return text;
   }
   const detail = body.detail;
   if (res.status === 422 && Array.isArray(detail)) {
@@ -31,13 +31,13 @@ async function errorText(res: Response): Promise<string> {
           "loc" in item && Array.isArray(item.loc) ? item.loc.join(".") : "";
         const msg =
           "msg" in item && typeof item.msg === "string" ? item.msg : undefined;
-        return loc ? loc + ": " + msg : msg;
+        return loc && msg ? loc + ": " + msg : loc || msg;
       })
       .join("; ");
   }
   if (typeof detail === "string") return detail;
   if (detail != null) return JSON.stringify(detail);
-  return text || String(res.status);
+  return text;
 }
 
 export async function signAndPost(
