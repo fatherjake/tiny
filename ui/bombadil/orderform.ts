@@ -1,4 +1,4 @@
-import { always, next, now } from "@antithesishq/bombadil";
+import { always, eventually, next, now } from "@antithesishq/bombadil";
 import {
   type ActionTemplate,
   actions,
@@ -28,6 +28,8 @@ type View = {
   submit: string | null;
   text: string;
   field: Field;
+  note: string | null;
+  nonce: number | null;
 };
 
 const view = extract((state): View => {
@@ -44,6 +46,8 @@ const view = extract((state): View => {
     submit: null,
     text: "",
     field: "none",
+    note: null,
+    nonce: null,
   };
   if (!form) return empty;
   const groups = form.querySelectorAll(".group");
@@ -69,6 +73,14 @@ const view = extract((state): View => {
   const priceInput = rowValue("price (USD)")?.querySelector("input") ?? null;
   const usdInput = rowValue("size (USD)")?.querySelector("input") ?? null;
   const sizeRow = rowValue("order size");
+  const submit = form.querySelector("button[type=submit]");
+  const after = submit?.nextElementSibling;
+  const note =
+    after && !after.classList.contains("row")
+      ? (after.textContent ?? "")
+      : null;
+  const stamp = form.querySelector(".muted.stamp")?.textContent ?? "";
+  const nonce = /nonce (\d+)/.exec(stamp)?.[1];
   const active = doc.activeElement;
   let field: Field = "none";
   if (active === priceInput && priceInput) field = "price";
@@ -89,10 +101,11 @@ const view = extract((state): View => {
     price: priceInput?.value ?? null,
     usd: usdInput?.value ?? null,
     orderSize: sizeRow?.querySelectorAll("span")[1]?.textContent ?? null,
-    submit:
-      form.querySelector("button[type=submit]")?.textContent?.trim() ?? null,
+    submit: submit?.textContent?.trim() ?? null,
     text: form.textContent ?? "",
     field,
+    note,
+    nonce: nonce == null ? null : Number(nonce),
   };
 });
 
@@ -162,6 +175,37 @@ export const submitLabelKnown = always(
     view.current.submit == null ||
     view.current.submit.endsWith("Place Order") ||
     view.current.submit.endsWith("Sending Order"),
+);
+
+const sending = () => (view.current.submit ?? "").endsWith("Sending Order");
+
+export const sendingSettles = always(
+  now(sending).implies(eventually(() => !sending()).within(5, "seconds")),
+);
+
+const waitingFor = () =>
+  /^order (\d+) sent, waiting for a block$/.exec(
+    view.current.note ?? "",
+  )?.[1] ?? null;
+
+export const sentOrderResolves = always(
+  now(() => {
+    const id = waitingFor();
+    if (id == null) return true;
+    return eventually(() => waitingFor() !== id).within(15, "seconds");
+  }),
+);
+
+export const nonceNeverDecreases = always(
+  now(() => {
+    const before = view.current.nonce;
+    return next(
+      () =>
+        before == null ||
+        view.current.nonce == null ||
+        view.current.nonce >= before,
+    );
+  }),
 );
 
 const outsideField = now(() => view.current.field === "none");
