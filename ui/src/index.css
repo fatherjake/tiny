@@ -466,6 +466,8 @@ td.flash-down.flash-1 {
 .prints > .print {
   position: absolute;
   left: 0;
+}
+.tape:not(.paused) .prints > .print {
   animation: arrive 0.6s ease-out;
 }
 .print > span {

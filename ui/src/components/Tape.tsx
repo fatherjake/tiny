@@ -27,7 +27,11 @@ export function Tape({ prints, tint = false }: Props) {
   const rows = pause.rows;
   const [start, end] = visible(rows.length, view.top, view.height);
   return (
-    <section className="tape" ref={pause.ref} onScroll={onScroll}>
+    <section
+      className={pause.paused ? "tape paused" : "tape"}
+      ref={pause.ref}
+      onScroll={onScroll}
+    >
       <div className="print head">
         <span className="l">side</span>
         <span>price</span>
