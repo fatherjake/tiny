@@ -455,8 +455,49 @@ td.flash-down.flash-0 {
 td.flash-down.flash-1 {
   animation: fall-1 0.8s ease-out;
 }
-.tape tbody tr {
+.prints {
+  position: relative;
+}
+.print {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) minmax(0, 1.6fr);
+  width: 100%;
+}
+.prints > .print {
+  position: absolute;
+  left: 0;
   animation: arrive 0.6s ease-out;
+}
+.print > span {
+  padding: 2px 6px;
+  border-left: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.print > span:first-child {
+  border-left: 0;
+}
+.print > .l {
+  text-align: left;
+}
+.print.head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #fff;
+  font-weight: bold;
+}
+.print.empty > span {
+  grid-column: 1 / -1;
+}
+.print > .ask {
+  color: #c62828;
+}
+.print > .bid {
+  color: #18803a;
 }
 .book tr.mine td.l {
   box-shadow: inset 3px 0 0 #000;
@@ -466,7 +507,7 @@ td.flash-down.flash-1 {
 }
 @media (prefers-reduced-motion: reduce) {
   .book tr,
-  .tape tr,
+  .print,
   td {
     animation: none !important;
   }

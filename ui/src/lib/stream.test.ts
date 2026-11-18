@@ -26,9 +26,9 @@ describe("flushTrades", () => {
     }
     flushTrades(client);
     const rows = client.getQueryData<Trade[]>(marketKeys.trades("BTC-PERP"))!;
-    expect(rows).toHaveLength(500);
-    expect(rows[0].seq).toBe(1001);
-    expect(rows[499].seq).toBe(502);
+    expect(rows).toHaveLength(MAX_TRADES);
+    expect(rows[0].seq).toBe(MAX_TRADES * 2 + 1);
+    expect(rows[MAX_TRADES - 1].seq).toBe(MAX_TRADES + 2);
   });
 
   it("folds trades into loaded candles and skips intervals still loading", () => {

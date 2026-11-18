@@ -1,9 +1,5 @@
-import type { OpenOrder, Trade } from "../types";
+import type { OpenOrder } from "../types";
 import { mineKey } from "./Book.utils";
-
-export const PRINTS = 40;
-
-export const latest = (rows: Trade[]) => rows.slice(0, PRINTS);
 
 export function mineKeys(orders: OpenOrder[], market: string): Set<string> {
   return new Set(
