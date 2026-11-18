@@ -1,6 +1,6 @@
 export const ROW_H = 21;
 export const EAGER = 100;
-export const OVERSCAN = 20;
+export const OVERSCAN = 80;
 
 export function visible(count: number, top: number, height: number) {
   if (top <= 0) return [0, Math.min(count, EAGER)] as const;
