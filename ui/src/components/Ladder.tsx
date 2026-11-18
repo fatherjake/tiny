@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { Activity, useMemo, useState } from "react";
 
 import { useOpenOrders } from "../hooks/useAccount";
 
@@ -63,12 +63,18 @@ export function Ladder({ market, trader, onPrice }: Props) {
           </button>
         ))}
       </div>
-      {tab === "book" ? (
+      <Activity mode={tab === "book" ? "visible" : "hidden"}>
         <BookTab market={market} trader={trader} onPrice={onPrice} />
-      ) : null}
-      {tab === "trades" ? <TradesTab market={market} /> : null}
-      {tab === "funding" ? <FundingTab market={market} /> : null}
-      {tab === "blocks" ? <BlocksTab /> : null}
+      </Activity>
+      <Activity mode={tab === "trades" ? "visible" : "hidden"}>
+        <TradesTab market={market} />
+      </Activity>
+      <Activity mode={tab === "funding" ? "visible" : "hidden"}>
+        <FundingTab market={market} />
+      </Activity>
+      <Activity mode={tab === "blocks" ? "visible" : "hidden"}>
+        <BlocksTab />
+      </Activity>
     </section>
   );
 }
