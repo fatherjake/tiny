@@ -5,7 +5,7 @@ import { positionValue } from "../lib/orders";
 import { bi, fmt, usd } from "../lib/scale";
 import type { Trade } from "../types";
 import { PausePill } from "./PausePill";
-import { ROW_H, visible } from "./Tape.utils";
+import { type Direction, ROW_H, visible } from "./Tape.utils";
 
 type Props = {
   prints: Trade[];
@@ -14,18 +14,32 @@ type Props = {
 
 export function Tape({ prints, tint = false }: Props) {
   const pause = usePause(prints);
-  const [view, setView] = useState({ top: 0, height: 0 });
+  const [view, setView] = useState({
+    top: 0,
+    height: 0,
+    direction: 1 as Direction,
+  });
   const onScroll = (event: UIEvent<HTMLElement>) => {
     const el = event.currentTarget;
-    setView({ top: el.scrollTop, height: el.clientHeight });
+    const top = el.scrollTop;
+    setView((prev) => ({
+      top,
+      height: el.clientHeight,
+      direction: top === prev.top ? prev.direction : top > prev.top ? 1 : -1,
+    }));
     pause.onScroll(event);
   };
   const resume = () => {
     pause.resume();
-    setView({ top: 0, height: 0 });
+    setView({ top: 0, height: 0, direction: 1 });
   };
   const rows = pause.rows;
-  const [start, end] = visible(rows.length, view.top, view.height);
+  const [start, end] = visible(
+    rows.length,
+    view.top,
+    view.height,
+    view.direction,
+  );
   return (
     <section
       className={pause.paused ? "tape paused" : "tape"}
