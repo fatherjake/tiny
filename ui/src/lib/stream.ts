@@ -37,7 +37,10 @@ export function applyFrame(
     }
     if (Date.now() - state.lastAccount >= REFRESH_MS) {
       state.lastAccount = Date.now();
-      void client.invalidateQueries({ queryKey: accountKeys.all });
+      void client.invalidateQueries(
+        { queryKey: accountKeys.all },
+        { cancelRefetch: false },
+      );
     }
     client.setQueryData<BlockMsg[]>(feedQuery.queryKey, (rows = []) =>
       [msg, ...rows].slice(0, FEED_LIMIT),
@@ -48,7 +51,10 @@ export function applyFrame(
       view: msg.view,
       tip: msg.hash,
     }));
-    void client.invalidateQueries({ queryKey: marketKeys.list });
+    void client.invalidateQueries(
+      { queryKey: marketKeys.list },
+      { cancelRefetch: false },
+    );
   } else if (msg.type === "book") {
     client.setQueryData<Record<string, Depth>>(marketKeys.books, (prev) => ({
       ...prev,
