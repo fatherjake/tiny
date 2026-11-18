@@ -5,6 +5,7 @@ import { createElement, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { markSent } from "../lib/latency";
+import { MAX_TRADES } from "../lib/marketQueries";
 import { flushTrades } from "../lib/stream";
 import type { BlockMsg, Trade, WsMessage } from "../types";
 import { useMarketStream } from "./useMarketStream";
@@ -230,15 +231,17 @@ describe("useMarketStream", () => {
     ]);
   });
 
-  it("keeps at most 500 prints", () => {
+  it("keeps at most MAX_TRADES prints", () => {
     const { client, push } = stream();
-    const old = Array.from({ length: 500 }, (_, i) => print(500 - i));
+    const old = Array.from({ length: MAX_TRADES }, (_, i) =>
+      print(MAX_TRADES - i),
+    );
     client.setQueryData(["market", "trades", "BTC"], old);
-    push({ type: "trade", ...print(501) });
+    push({ type: "trade", ...print(MAX_TRADES + 1) });
     const rows = client.getQueryData<Trade[]>(["market", "trades", "BTC"]);
-    expect(rows?.length).toBe(500);
-    expect(rows?.[0].seq).toBe(501);
-    expect(rows?.[499].seq).toBe(2);
+    expect(rows?.length).toBe(MAX_TRADES);
+    expect(rows?.[0].seq).toBe(MAX_TRADES + 1);
+    expect(rows?.[MAX_TRADES - 1].seq).toBe(2);
   });
 
   it("folds trades into every loaded candle series for their market", () => {

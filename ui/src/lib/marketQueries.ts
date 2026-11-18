@@ -32,7 +32,8 @@ export const feedQuery = queryOptions({
   gcTime: Infinity,
 });
 
-export const MAX_TRADES = 500;
+export const MAX_TRADES = 10_000;
+const TRADES_PAGE = 500;
 export const INTERVAL_MS = {
   "1s": 1_000,
   "3s": 3_000,
@@ -104,7 +105,7 @@ export const tradesQuery = (market: string) =>
     queryKey: marketKeys.trades(market),
     queryFn: async ({ signal }) => {
       const rows = await getJson<StoredTrade[]>(
-        "/trades/" + encodeURIComponent(market) + "?limit=" + MAX_TRADES,
+        "/trades/" + encodeURIComponent(market) + "?limit=" + TRADES_PAGE,
         signal,
       );
       return rows.map(asPrint);

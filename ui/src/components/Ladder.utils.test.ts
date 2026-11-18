@@ -1,47 +1,14 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
-import type { OpenOrder, Trade } from "../types";
-import { latest, mineKeys } from "./Ladder.utils";
-
-const trade = (seq: number): Trade => ({
-  seq,
-  height: seq,
-  timestamp_ms: 0,
-  market: "BTC-USD",
-  side: "buy",
-  price: 1,
-  size: 1,
-});
+import type { OpenOrder } from "../types";
+import { mineKeys } from "./Ladder.utils";
 
 const order = (
   market: string,
   side: "buy" | "sell",
   price: OpenOrder["price"],
 ): OpenOrder => ({ id: 1, market, side, price, size: 1 });
-
-describe("latest", () => {
-  it("keeps the first 40 prints", () => {
-    const rows = Array.from({ length: 50 }, (_, i) => trade(i));
-    const kept = latest(rows);
-    expect(kept).toHaveLength(40);
-    expect(kept[0].seq).toBe(0);
-    expect(kept[39].seq).toBe(39);
-  });
-
-  it("is a prefix of at most 40 rows", () => {
-    fc.assert(
-      fc.property(fc.array(fc.nat(), { maxLength: 100 }), (seqs) => {
-        const rows = seqs.map(trade);
-        const kept = latest(rows);
-        return (
-          kept.length === Math.min(rows.length, 40) &&
-          kept.every((r, i) => r === rows[i])
-        );
-      }),
-    );
-  });
-});
 
 describe("mineKeys", () => {
   it("keys the market's orders by book side and price", () => {

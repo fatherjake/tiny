@@ -298,7 +298,7 @@ describe("LoadSim", () => {
     expect([sim.applied, sim.backlog]).toEqual([5_000, 0]);
     flushTrades(qc);
     expect(qc.getQueryData<Trade[]>(marketKeys.trades(MARKET))).toHaveLength(
-      500,
+      5_000,
     );
     sim.stop();
   });

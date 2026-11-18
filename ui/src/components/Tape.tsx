@@ -1,10 +1,11 @@
+import { type UIEvent, useState } from "react";
+
 import { usePause } from "../hooks/usePause";
 import { positionValue } from "../lib/orders";
 import { bi, fmt, usd } from "../lib/scale";
 import type { Trade } from "../types";
 import { PausePill } from "./PausePill";
-
-const TAPE_ROWS = 40;
+import { type Direction, ROW_H, visible } from "./Tape.utils";
 
 type Props = {
   prints: Trade[];
@@ -13,43 +14,74 @@ type Props = {
 
 export function Tape({ prints, tint = false }: Props) {
   const pause = usePause(prints);
-  const rows = pause.rows.slice(0, TAPE_ROWS).map((print) => (
-    <tr key={"p" + print.seq}>
-      <td className="l">{print.side}</td>
-      <td className={tint ? (print.side === "buy" ? "bid" : "ask") : undefined}>
-        {usd(print.price)}
-      </td>
-      <td>
-        {fmt(print.size)}{" "}
-        <span className="muted">
-          {usd(positionValue(bi(print.size), print.price))}
-        </span>
-      </td>
-    </tr>
-  ));
+  const [view, setView] = useState({
+    top: 0,
+    height: 0,
+    direction: 1 as Direction,
+  });
+  const onScroll = (event: UIEvent<HTMLElement>) => {
+    const el = event.currentTarget;
+    const top = el.scrollTop;
+    setView((prev) => ({
+      top,
+      height: el.clientHeight,
+      direction: top === prev.top ? prev.direction : top > prev.top ? 1 : -1,
+    }));
+    pause.onScroll(event);
+  };
+  const resume = () => {
+    pause.resume();
+    setView({ top: 0, height: 0, direction: 1 });
+  };
+  const rows = pause.rows;
+  const [start, end] = visible(
+    rows.length,
+    view.top,
+    view.height,
+    view.direction,
+  );
   return (
-    <section className="tape" ref={pause.ref} onScroll={pause.onScroll}>
-      <table>
-        <thead>
-          <tr>
-            <td className="l">side</td>
-            <td>price</td>
-            <td>size</td>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.length ? (
-            rows
-          ) : (
-            <tr>
-              <td className="l" colSpan={3}>
-                none
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-      <PausePill paused={pause.paused} onResume={pause.resume} />
+    <section
+      className={pause.paused ? "tape paused" : "tape"}
+      ref={pause.ref}
+      onScroll={onScroll}
+    >
+      <div className="print head">
+        <span className="l">side</span>
+        <span>price</span>
+        <span>size</span>
+      </div>
+      {rows.length ? (
+        <div className="prints" style={{ height: rows.length * ROW_H }}>
+          {rows.slice(start, end).map((print, i) => (
+            <div
+              key={"p" + print.seq}
+              className="print"
+              style={{ top: (start + i) * ROW_H, height: ROW_H }}
+            >
+              <span className="l">{print.side}</span>
+              <span
+                className={
+                  tint ? (print.side === "buy" ? "bid" : "ask") : undefined
+                }
+              >
+                {usd(print.price)}
+              </span>
+              <span>
+                {fmt(print.size)}{" "}
+                <span className="muted">
+                  {usd(positionValue(bi(print.size), print.price))}
+                </span>
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="print empty">
+          <span className="l">none</span>
+        </div>
+      )}
+      <PausePill paused={pause.paused} onResume={resume} />
     </section>
   );
 }

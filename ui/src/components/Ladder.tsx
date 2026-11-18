@@ -13,7 +13,7 @@ import type { Scaled } from "../types";
 import { Book } from "./Book";
 import { Feed } from "./Feed";
 import { Funding } from "./History";
-import { latest, mineKeys } from "./Ladder.utils";
+import { mineKeys } from "./Ladder.utils";
 import { Tape } from "./Tape";
 
 type Props = {
@@ -36,7 +36,7 @@ function BookTab({ market, trader, onPrice }: Props) {
 }
 
 function TradesTab({ market }: { market: string }) {
-  return <Tape prints={useTrades(market, latest) ?? []} tint />;
+  return <Tape prints={useTrades(market) ?? []} tint />;
 }
 
 function FundingTab({ market }: { market: string }) {
